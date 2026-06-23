@@ -1,0 +1,108 @@
+import asyncio
+import json
+import logging
+
+import redis.asyncio as aioredis
+
+from .camera_worker import CameraWorker
+from .config import (
+    CONF_THRESHOLD,
+    DEDUP_WINDOW_MS,
+    MAX_EVENTS_PER_MIN,
+    MODEL_PATH,
+    REDIS_URL,
+)
+from .dedup import DedupRateLimiter
+from .detector import YoloDetector
+from .signaling import handle_offer
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s %(levelname)s %(name)s %(message)s",
+)
+log = logging.getLogger("worker")
+
+
+class WorkerApp:
+    def __init__(self):
+        self.sub = aioredis.from_url(REDIS_URL)
+        self.pub = aioredis.from_url(REDIS_URL)
+        log.info("loading detector %s ...", MODEL_PATH)
+        self.detector = YoloDetector(MODEL_PATH, CONF_THRESHOLD)
+        self.limiter = DedupRateLimiter(DEDUP_WINDOW_MS, MAX_EVENTS_PER_MIN)
+        self.workers: dict[str, CameraWorker] = {}
+
+    async def publish(self, channel: str, payload: dict) -> None:
+        await self.pub.publish(channel, json.dumps(payload))
+
+    async def publish_answer(self, req_id: str, sdp: str) -> None:
+        await self.pub.publish(
+            "webrtc:answers", json.dumps({"reqId": req_id, "sdp": sdp})
+        )
+
+    async def handle_command(self, cmd: dict) -> None:
+        kind = cmd.get("type")
+        cid = cmd.get("camera_id")
+        if not cid:
+            return
+        if kind == "start":
+            if cid in self.workers:
+                return  # already running
+            worker = CameraWorker(
+                cid, cmd["rtsp_url"], self.detector, self.publish, self.limiter
+            )
+            self.workers[cid] = worker
+            worker.start()
+            log.info("started camera %s", cid)
+        elif kind == "stop":
+            worker = self.workers.pop(cid, None)
+            if worker:
+                await worker.stop()
+                self.limiter.reset(cid)
+                log.info("stopped camera %s", cid)
+
+    async def handle_webrtc(self, req: dict) -> None:
+        cid = req.get("camera_id")
+        worker = self.workers.get(cid)
+        if not worker:
+            await self.pub.publish(
+                "webrtc:answers",
+                json.dumps({"reqId": req.get("reqId"), "error": "camera not running"}),
+            )
+            return
+        try:
+            await handle_offer(worker, req["sdp"], self.publish_answer, req["reqId"])
+        except Exception as e:
+            log.exception("webrtc negotiation failed")
+            await self.pub.publish(
+                "webrtc:answers",
+                json.dumps({"reqId": req.get("reqId"), "error": str(e)[:200]}),
+            )
+
+    async def run(self) -> None:
+        ps = self.sub.pubsub()
+        await ps.subscribe("camera:commands", "webrtc:requests")
+        log.info("worker up; subscribed to camera:commands, webrtc:requests")
+        async for msg in ps.listen():
+            if msg.get("type") != "message":
+                continue
+            channel = msg["channel"]
+            if isinstance(channel, bytes):
+                channel = channel.decode()
+            try:
+                data = json.loads(msg["data"])
+            except Exception:
+                continue
+            if channel == "camera:commands":
+                await self.handle_command(data)
+            elif channel == "webrtc:requests":
+                # negotiate concurrently so one slow handshake doesn't block others
+                asyncio.create_task(self.handle_webrtc(data))
+
+
+def main() -> None:
+    asyncio.run(WorkerApp().run())
+
+
+if __name__ == "__main__":
+    main()
