@@ -1,0 +1,23 @@
+{
+  "name": "vms-backend",
+  "version": "0.1.0",
+  "type": "module",
+  "module": "src/index.ts",
+  "scripts": {
+    "dev": "bun run --watch src/index.ts",
+    "start": "bun run src/index.ts",
+    "db:push": "drizzle-kit push",
+    "seed": "bun run src/seed.ts",
+    "test": "bun test"
+  },
+  "dependencies": {
+    "drizzle-orm": "^0.36.4",
+    "hono": "^4.6.14",
+    "ioredis": "^5.4.2",
+    "postgres": "^3.4.5"
+  },
+  "devDependencies": {
+    "@types/bun": "latest",
+    "drizzle-kit": "^0.28.1"
+  }
+}
