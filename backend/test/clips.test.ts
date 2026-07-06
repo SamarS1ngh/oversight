@@ -2,6 +2,7 @@ import { test, expect, beforeAll } from "bun:test";
 import { sql } from "drizzle-orm";
 import { app } from "../src/app";
 import { db } from "../src/db";
+import { clips } from "../src/db/schema";
 
 let dbUp = false;
 beforeAll(async () => {
@@ -46,4 +47,80 @@ test("GET /clips returns an empty list for a fresh user", async () => {
   const body = await res.json();
   expect(body.clips).toEqual([]);
   expect(body).toHaveProperty("count", 0);
+});
+
+// Signs up a fresh user, creates a camera for them, and inserts one clip row
+// directly on that camera. Returns the user's token, the clip id, and a
+// bound `authed` helper for making requests as this user.
+async function makeUserWithClip() {
+  const signup = await call(
+    "/auth/signup",
+    json({ username: "clipu_" + rnd(), password: "secret12" }),
+  );
+  const { token } = await signup.json();
+  const authed = (path: string, opts: RequestInit = {}) =>
+    call(path, {
+      ...opts,
+      headers: { ...(opts.headers ?? {}), Authorization: `Bearer ${token}` },
+    });
+
+  const camRes = await authed(
+    "/cameras",
+    json({ name: "cam-" + rnd(), rtsp_url: "rtsp://example.com/stream" }),
+  );
+  const cam = await camRes.json();
+
+  const clipId = crypto.randomUUID();
+  const now = new Date();
+  await db.insert(clips).values({
+    id: clipId,
+    cameraId: cam.id,
+    startTs: now,
+    endTs: now,
+    durationMs: 20000,
+    sizeBytes: 1000,
+    path: "cam/x.mp4",
+    backend: "local",
+  });
+
+  return { token, clipId, authed };
+}
+
+test("clips are scoped to the owning user: another user cannot list or delete them", async () => {
+  if (!dbUp) return;
+
+  const a = await makeUserWithClip();
+  const signupB = await call(
+    "/auth/signup",
+    json({ username: "clipb_" + rnd(), password: "secret12" }),
+  );
+  const { token: tokenB } = await signupB.json();
+
+  const listAsB = await call("/clips", { headers: { Authorization: `Bearer ${tokenB}` } });
+  expect(listAsB.status).toBe(200);
+  expect((await listAsB.json()).clips).toEqual([]);
+
+  const listAsA = await a.authed("/clips");
+  expect(listAsA.status).toBe(200);
+  const bodyA = await listAsA.json();
+  expect(bodyA.count).toBe(1);
+  expect(bodyA.clips.map((cl: any) => cl.id)).toContain(a.clipId);
+
+  const deleteAsB = await call(`/clips/${a.clipId}`, {
+    method: "DELETE",
+    headers: { Authorization: `Bearer ${tokenB}` },
+  });
+  expect(deleteAsB.status).toBe(404);
+});
+
+test("DELETE /clips/:id as the owner removes the clip", async () => {
+  if (!dbUp) return;
+
+  const a = await makeUserWithClip();
+
+  const del = await a.authed(`/clips/${a.clipId}`, { method: "DELETE" });
+  expect(del.status).toBe(204);
+
+  const after = await a.authed("/clips");
+  expect((await after.json()).clips).toEqual([]);
 });
