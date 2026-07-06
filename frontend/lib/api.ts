@@ -61,9 +61,20 @@ export const api = {
   listAlerts: (cameraId?: string, limit = 20) =>
     req(`/alerts?${cameraId ? `camera_id=${cameraId}&` : ""}limit=${limit}`),
 
+  listClips: (cameraId?: string, limit = 50) =>
+    req(`/clips?${cameraId ? `camera_id=${cameraId}&` : ""}limit=${limit}`),
+  deleteClip: (id: string) => req(`/clips/${id}`, { method: "DELETE" }),
+
   webrtcOffer: (id: string, sdp: string) =>
     req(`/cameras/${id}/webrtc`, {
       method: "POST",
       body: JSON.stringify({ sdp, type: "offer" }),
     }),
 };
+
+export function clipVideoUrl(id: string) {
+  return `${API_URL}/clips/${id}/video?token=${getToken() ?? ""}`;
+}
+export function clipThumbUrl(id: string) {
+  return `${API_URL}/clips/${id}/thumb?token=${getToken() ?? ""}`;
+}

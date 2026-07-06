@@ -22,10 +22,25 @@ export type Alert = {
   frameW: number | null;
   frameH: number | null;
   workerId: string | null;
+  clipId?: string | null;
 };
 
 export type CamStats = {
   fps: number;
   detections_per_min: number;
   state?: string;
+};
+
+export type Clip = {
+  id: string;
+  cameraId: string;
+  alertId: string | null;
+  backend: string;
+  path: string;
+  thumbPath: string | null;
+  startTs: string;
+  endTs: string;
+  durationMs: number;
+  sizeBytes: number;
+  createdAt: string;
 };
