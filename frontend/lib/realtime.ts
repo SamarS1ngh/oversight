@@ -11,6 +11,11 @@ export function useRealtime(token: string | null) {
   const [statsByCam, setStats] = useState<Record<string, CamStats>>({});
   const [stateByCam, setStateByCam] = useState<Record<string, string>>({});
   const [alertBump, setAlertBump] = useState<AlertBump | null>(null);
+  const [clipBump, setClipBump] = useState<{
+    alertId: string | null;
+    cameraId: string;
+    clip: any;
+  } | null>(null);
   const [connected, setConnected] = useState(false);
   const wsRef = useRef<WebSocket | null>(null);
 
@@ -52,6 +57,12 @@ export function useRealtime(token: string | null) {
             setStateByCam((s) => ({ ...s, [d.camera_id]: d.state }));
         } else if (msg.channel === "alert") {
           setAlertBump({ cameraId: msg.data.camera_id, alert: msg.data });
+        } else if (msg.channel === "clip") {
+          setClipBump({
+            alertId: msg.data.alert_id ?? null,
+            cameraId: msg.data.camera_id,
+            clip: msg.data,
+          });
         }
       };
     }
@@ -64,5 +75,5 @@ export function useRealtime(token: string | null) {
     };
   }, [token]);
 
-  return { statsByCam, stateByCam, alertBump, connected };
+  return { statsByCam, stateByCam, alertBump, clipBump, connected };
 }

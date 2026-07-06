@@ -5,6 +5,7 @@ import { api, getToken, clearToken } from "@/lib/api";
 import { useRealtime } from "@/lib/realtime";
 import { CameraTile } from "@/components/CameraTile";
 import { CameraForm } from "@/components/CameraForm";
+import { ClipPlayer } from "@/components/ClipPlayer";
 import type { Alert, Camera } from "@/lib/types";
 
 export default function Dashboard() {
@@ -15,8 +16,9 @@ export default function Dashboard() {
   const [showForm, setShowForm] = useState(false);
   const [editing, setEditing] = useState<Camera | null>(null);
   const [loading, setLoading] = useState(true);
+  const [playingClip, setPlayingClip] = useState<string | null>(null);
 
-  const { statsByCam, stateByCam, alertBump, connected } = useRealtime(token);
+  const { statsByCam, stateByCam, alertBump, clipBump, connected } = useRealtime(token);
 
   useEffect(() => {
     const t = getToken();
@@ -59,6 +61,21 @@ export default function Dashboard() {
       };
     });
   }, [alertBump]);
+
+  // when a clip finishes recording, attach its id to the matching alert
+  useEffect(() => {
+    if (!clipBump) return;
+    setAlertsByCam((prev) => {
+      const list = prev[clipBump.cameraId];
+      if (!list) return prev;
+      return {
+        ...prev,
+        [clipBump.cameraId]: list.map((a) =>
+          a.id === clipBump.alertId ? { ...a, clipId: clipBump.clip.id } : a,
+        ),
+      };
+    });
+  }, [clipBump]);
 
   function logout() {
     clearToken();
@@ -111,6 +128,7 @@ export default function Dashboard() {
                 setShowForm(true);
               }}
               onDeleted={load}
+              onPlayClip={setPlayingClip}
             />
           ))}
         </div>
@@ -125,6 +143,10 @@ export default function Dashboard() {
             load();
           }}
         />
+      )}
+
+      {playingClip && (
+        <ClipPlayer clipId={playingClip} onClose={() => setPlayingClip(null)} />
       )}
     </main>
   );

@@ -1,7 +1,7 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
 import type { Alert, Camera, CamStats } from "@/lib/types";
-import { api } from "@/lib/api";
+import { api, clipThumbUrl } from "@/lib/api";
 import { connectCameraStream } from "@/lib/webrtc";
 
 // One tile on the dashboard = one camera.
@@ -18,6 +18,7 @@ type Props = {
   alerts: Alert[];
   onEdit: () => void;
   onDeleted: () => void;
+  onPlayClip: (clipId: string) => void;
 };
 
 // Pretty text for each status value.
@@ -35,6 +36,7 @@ export function CameraTile({
   alerts,
   onEdit,
   onDeleted,
+  onPlayClip,
 }: Props) {
   // The <video> element we pour the WebRTC stream into.
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -194,16 +196,23 @@ export function CameraTile({
         ) : (
           alerts.slice(0, 5).map((alert) => (
             <div key={alert.id} className="alert-row">
-              <span className="dot" />
+              {alert.clipId ? (
+                <button
+                  className="thumb-btn"
+                  title="Play clip"
+                  onClick={() => onPlayClip(alert.clipId!)}
+                >
+                  <img src={clipThumbUrl(alert.clipId)} alt="" className="thumb" />
+                  <span className="play-badge">▶</span>
+                </button>
+              ) : (
+                <span className="dot" />
+              )}
               <span>
                 {alert.count} person{alert.count > 1 ? "s" : ""}
               </span>
-              <span className="conf">
-                {Math.round((alert.confidence ?? 0) * 100)}%
-              </span>
-              <span className="time">
-                {new Date(alert.ts).toLocaleTimeString()}
-              </span>
+              <span className="conf">{Math.round((alert.confidence ?? 0) * 100)}%</span>
+              <span className="time">{new Date(alert.ts).toLocaleTimeString()}</span>
             </div>
           ))
         )}

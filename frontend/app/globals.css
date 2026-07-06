@@ -304,3 +304,57 @@ input[type="checkbox"] {
   gap: 0.5rem;
   margin-top: 0.4rem;
 }
+
+/* ---- clip player (own panel class so it doesn't inherit the
+   380px-wide form-modal sizing above; shares .modal-backdrop/.modal-actions) ---- */
+.clip-modal {
+  background: #111;
+  padding: 12px;
+  border-radius: 8px;
+  max-width: 90vw;
+  max-height: 90vh;
+}
+.clip-modal video {
+  max-width: 86vw;
+  max-height: 74vh;
+  display: block;
+}
+.btn {
+  display: inline-flex;
+  align-items: center;
+  font: inherit;
+  padding: 0.45rem 0.8rem;
+  border-radius: 7px;
+  border: 1px solid var(--border);
+  background: var(--panel-2);
+  color: var(--text);
+  text-decoration: none;
+  cursor: pointer;
+}
+.btn:hover {
+  border-color: #3d4757;
+}
+.thumb-btn {
+  position: relative;
+  padding: 0;
+  border: 0;
+  background: none;
+  cursor: pointer;
+  line-height: 0;
+}
+.thumb {
+  width: 48px;
+  height: 27px;
+  object-fit: cover;
+  border-radius: 3px;
+}
+.play-badge {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+  font-size: 11px;
+  text-shadow: 0 0 3px #000;
+}
