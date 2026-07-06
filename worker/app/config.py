@@ -23,3 +23,10 @@ DETECT_EVERY_N = _int("DETECT_EVERY_N", 3)  # run YOLO on every Nth decoded fram
 
 # webrtc
 STUN_URL = os.environ.get("STUN_URL", "stun:stun.l.google.com:19302")
+
+# recording (M1)
+PRE_ROLL_S = _int("PRE_ROLL_S", 10)
+POST_ROLL_S = _int("POST_ROLL_S", 10)
+MAX_CLIP_LEN_S = _int("MAX_CLIP_LEN_S", 120)
+RECORDINGS_DIR = os.environ.get("RECORDINGS_DIR", "/recordings")
+STORAGE_BACKEND = os.environ.get("STORAGE_BACKEND", "local")

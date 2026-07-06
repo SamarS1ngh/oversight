@@ -8,8 +8,17 @@ import numpy as np
 from aiortc import VideoStreamTrack
 from av import VideoFrame
 
-from .config import DETECT_EVERY_N, WORKER_ID
+from .config import (
+    DETECT_EVERY_N,
+    WORKER_ID,
+    PRE_ROLL_S,
+    POST_ROLL_S,
+    MAX_CLIP_LEN_S,
+    RECORDINGS_DIR,
+    STORAGE_BACKEND,
+)
 from .events import detection_event, stats_event, state_event
+from .recorder import Recorder
 
 log = logging.getLogger("camera")
 
@@ -62,6 +71,17 @@ class CameraWorker:
 
         self._fps = 0.0
         self._det_times: list[float] = []
+
+        self.recorder = Recorder(
+            camera_id=str(camera_id),
+            recordings_dir=RECORDINGS_DIR,
+            pre_roll_ms=PRE_ROLL_S * 1000,
+            post_roll_ms=POST_ROLL_S * 1000,
+            max_clip_len_ms=MAX_CLIP_LEN_S * 1000,
+            emit=lambda ch, p: self._evq.put((ch, p)),
+            worker_id=WORKER_ID,
+            backend=STORAGE_BACKEND,
+        )
 
     # ---------- lifecycle ----------
     def start(self) -> None:
@@ -140,42 +160,54 @@ class CameraWorker:
             return
 
         self._push_state("live")
+        self.recorder.set_stream(stream)
         frame_count = 0
         frames_since = 0
         last_fps_t = _now_ms()
         try:
-            for frame in container.decode(stream):
+            for packet in container.demux(stream):
                 if self._stop.is_set():
                     break
-                img = frame.to_ndarray(format="bgr24")
-                frame_count += 1
-                frames_since += 1
+                for frame in packet.decode():
+                    if self._stop.is_set():
+                        break
+                    img = frame.to_ndarray(format="bgr24")
+                    frame_count += 1
+                    frames_since += 1
 
-                now = _now_ms()
-                if now - last_fps_t >= 1000:
-                    self._fps = frames_since * 1000.0 / (now - last_fps_t)
-                    frames_since = 0
-                    last_fps_t = now
+                    now = _now_ms()
+                    if now - last_fps_t >= 1000:
+                        self._fps = frames_since * 1000.0 / (now - last_fps_t)
+                        frames_since = 0
+                        last_fps_t = now
 
-                boxes = []
-                if frame_count % DETECT_EVERY_N == 0:
-                    boxes = self.detector.detect_persons(img)
+                    boxes = []
+                    if frame_count % DETECT_EVERY_N == 0:
+                        boxes = self.detector.detect_persons(img)
+
+                    annotated = self._annotate(img, boxes)
                     if boxes:
-                        self._maybe_emit_detection(img, boxes, now)
+                        self._maybe_emit_detection(img, boxes, now, annotated)
 
-                self.latest_frame = VideoFrame.from_ndarray(
-                    self._annotate(img, boxes), format="bgr24"
-                )
+                    self.latest_frame = VideoFrame.from_ndarray(annotated, format="bgr24")
+
+                # buffer/record the compressed packet AFTER decoding it, so any
+                # timestamp rebasing during muxing can't disturb the decoder.
+                self.recorder.on_packet(packet)
         except Exception as e:
             log.exception("decode loop failed: %s", self.camera_id)
             self._push_state("error", str(e)[:200])
         finally:
             try:
+                self.recorder.close()
+            except Exception:
+                pass
+            try:
                 container.close()
             except Exception:
                 pass
 
-    def _maybe_emit_detection(self, img, boxes, now_ms: float) -> None:
+    def _maybe_emit_detection(self, img, boxes, now_ms: float, annotated) -> None:
         self._det_times.append(now_ms)
         count = len(boxes)
         if not self.limiter.should_emit(self.camera_id, count, now_ms):
@@ -201,6 +233,8 @@ class CameraWorker:
             WORKER_ID,
         )
         self._evq.put(("detections", payload))
+        # start/extend an event clip, using this detection's id as the link
+        self.recorder.trigger(annotated, payload["id"])
 
     def _push_state(self, state: str, detail: str | None = None) -> None:
         self.state = state

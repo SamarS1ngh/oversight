@@ -87,13 +87,40 @@ multiplexes alerts + stats + state. The client switches on `channel`.
 
 ```json
 {
-  "channel": "alert",                    // "alert" | "stats" | "state"
+  "channel": "alert",                    // "alert" | "stats" | "state" | "clip"
   "data": { /* §2, §3, or §4 payload */ }
 }
 ```
 
 The browser only receives events for cameras owned by the authenticated user;
 the API filters server-side before pushing.
+
+## 6. Clip ready (Worker → Redis → API → DB → WS)
+
+Emitted by the worker when an event-clip finishes writing (~POST_ROLL after the
+last triggering detection). Channel: `clips`. Persisted to the `clips` table;
+the API links it to the alert via `alert_id` and fans it out as a `clip`
+envelope. `path`/`thumb_path` are relative to `RECORDINGS_DIR`.
+
+```json
+{
+  "type": "clip_ready",
+  "id": "9c2a...",                       // UUID, worker-generated (idempotency key)
+  "alert_id": "1f0e...",                 // the detection/alert that triggered it
+  "camera_id": "f6c1...",
+  "start_ts": "2026-07-06T13:59:01.500Z",
+  "end_ts":   "2026-07-06T13:59:21.500Z",
+  "duration_ms": 20000,
+  "size_bytes": 1830000,
+  "path": "f6c1.../9c2a....mp4",
+  "thumb_path": "f6c1.../9c2a....jpg",
+  "backend": "local",
+  "worker_id": "worker-1"
+}
+```
+
+The WebSocket envelope (§5) `channel` may also be `clip`, whose `data` is the
+payload above.
 
 ---
 
