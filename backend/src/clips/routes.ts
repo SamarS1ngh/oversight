@@ -106,7 +106,14 @@ clipRoutes.get("/:id/video", async (c) => {
     if (start >= size || start > end) {
       return new Response("", { status: 416, headers: { "content-range": `bytes */${size}` } });
     }
-    return new Response(file.slice(start, end + 1), {
+    // Materialize the slice to a fixed-size ArrayBuffer: the global cors()
+    // middleware touches c.res before next(), which makes Hono re-wrap this
+    // Response as `new Response(_res.body, _res)`. Re-reading `.body` off a
+    // Response backed by a Bun.file().slice() Blob streams from `start` to
+    // end-of-file instead of stopping at `end`, over-serving bytes past the
+    // declared Content-Length. An ArrayBuffer body has no such re-read hazard.
+    const bytes = await file.slice(start, end + 1).arrayBuffer();
+    return new Response(bytes, {
       status: 206,
       headers: {
         "content-type": "video/mp4",
