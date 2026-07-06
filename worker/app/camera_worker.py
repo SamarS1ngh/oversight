@@ -85,15 +85,33 @@ class CameraWorker:
 
     # ---------- lifecycle ----------
     def start(self) -> None:
-        self._tasks = [
-            asyncio.create_task(self._drain()),
-            asyncio.create_task(self._stats_loop()),
-            asyncio.create_task(asyncio.to_thread(self._decode_loop)),
-        ]
+        self._drain_task = asyncio.create_task(self._drain())
+        self._stats_task = asyncio.create_task(self._stats_loop())
+        self._decode_task = asyncio.create_task(asyncio.to_thread(self._decode_loop))
+        self._tasks = [self._drain_task, self._stats_task, self._decode_task]
 
     async def stop(self) -> None:
         self._stop.set()
-        self._evq.put(None)  # unblock the drain
+        # Let the decode thread exit first: its `finally` calls recorder.close(),
+        # which finalizes any in-progress clip and enqueues the final clip_ready.
+        # We must drain that event BEFORE tearing the drain down, or the last
+        # clip is lost from the DB and its file is orphaned on disk (retention
+        # only tracks DB rows). Bounded so a stalled RTSP read can't hang stop.
+        decode_task = getattr(self, "_decode_task", None)
+        if decode_task is not None:
+            try:
+                await asyncio.wait_for(asyncio.shield(decode_task), timeout=3.0)
+            except Exception:
+                pass
+        # Signal the drain to finish, then wait for it to publish what's queued
+        # (including the final clip_ready enqueued above) before we cancel tasks.
+        self._evq.put(None)
+        drain_task = getattr(self, "_drain_task", None)
+        if drain_task is not None:
+            try:
+                await asyncio.wait_for(asyncio.shield(drain_task), timeout=3.0)
+            except Exception:
+                pass
         for pc in list(self._pcs):
             try:
                 await pc.close()
