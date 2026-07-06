@@ -45,7 +45,17 @@ app.get(
           ws.close(1008, "unauthorized");
         }
       },
-      onClose(_evt, ws) {
+      onClose(evt, ws) {
+        if (userId) removeConn(userId, ws);
+        // 1000 = normal, 1005 = no code (clean). Anything else is worth a line.
+        if (evt.code && evt.code !== 1000 && evt.code !== 1005) {
+          console.error(
+            `[ws] closed abnormally user=${userId ?? "?"} code=${evt.code} reason=${evt.reason || "-"}`,
+          );
+        }
+      },
+      onError(_evt, ws) {
+        console.error(`[ws] socket error user=${userId ?? "?"}`);
         if (userId) removeConn(userId, ws);
       },
     };

@@ -4,8 +4,15 @@ import type { Alert, Camera, CamStats } from "@/lib/types";
 import { api } from "@/lib/api";
 import { connectCameraStream } from "@/lib/webrtc";
 
+// One tile on the dashboard = one camera.
+// It shows the live video, some stats, recent alerts, and
+// Start / Stop / Edit / Delete buttons.
+
 type Props = {
   camera: Camera;
+  // Latest status pushed over the websocket ("live", "error", ...).
+  // Falls back to the status saved in the database if we haven't
+  // heard anything over the websocket yet.
   liveState?: string;
   stats?: CamStats;
   alerts: Alert[];
@@ -13,6 +20,7 @@ type Props = {
   onDeleted: () => void;
 };
 
+// Pretty text for each status value.
 const STATE_LABEL: Record<string, string> = {
   stopped: "Stopped",
   connecting: "Connecting…",
@@ -28,143 +36,173 @@ export function CameraTile({
   onEdit,
   onDeleted,
 }: Props) {
+  // The <video> element we pour the WebRTC stream into.
   const videoRef = useRef<HTMLVideoElement>(null);
-  const pcRef = useRef<RTCPeerConnection | null>(null);
-  const [busy, setBusy] = useState(false);
-  const [err, setErr] = useState<string | null>(null);
-  const [streaming, setStreaming] = useState(false);
 
-  const state = liveState ?? camera.status;
-  const running = state === "live" || state === "connecting" || streaming;
+  // The open WebRTC connection (null when there isn't one).
+  // Kept in a ref, not state, because changing it should not re-render.
+  const peerConnectionRef = useRef<RTCPeerConnection | null>(null);
 
-  async function connectStream() {
+  // True while a Start/Stop request is in flight — disables the buttons.
+  const [isBusy, setIsBusy] = useState(false);
+
+  // Error text to show under the video, or null when all is fine.
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+
+  // True once video frames are actually arriving.
+  const [isReceivingVideo, setIsReceivingVideo] = useState(false);
+
+  // What state is the camera in right now?
+  // Websocket value wins; database value is the fallback.
+  const cameraState = liveState ?? camera.status;
+  const isRunning =
+    cameraState === "live" || cameraState === "connecting" || isReceivingVideo;
+
+  // Open a WebRTC connection to the backend and attach the incoming
+  // video stream to our <video> element.
+  async function connectVideoStream() {
     try {
-      const pc = await connectCameraStream(camera.id, (stream) => {
+      const peerConnection = await connectCameraStream(camera.id, (stream) => {
         if (videoRef.current) {
           videoRef.current.srcObject = stream;
           videoRef.current.play().catch(() => {});
         }
-        setStreaming(true);
+        setIsReceivingVideo(true);
       });
-      pcRef.current = pc;
+      peerConnectionRef.current = peerConnection;
     } catch (e: any) {
-      setErr("stream: " + e.message);
+      setErrorMessage("stream: " + e.message);
     }
   }
 
-  async function start() {
-    setErr(null);
-    setBusy(true);
+  // Start button: tell the backend to start the camera worker,
+  // wait a moment so it can open the RTSP feed, then connect video.
+  async function handleStart() {
+    setErrorMessage(null);
+    setIsBusy(true);
     try {
       await api.startCamera(camera.id);
-      // give the worker a beat to open the RTSP stream before negotiating
-      await new Promise((r) => setTimeout(r, 1200));
-      await connectStream();
+      // The worker needs a moment to open the RTSP stream before
+      // WebRTC negotiation can succeed.
+      await new Promise((resolve) => setTimeout(resolve, 1200));
+      await connectVideoStream();
     } catch (e: any) {
-      setErr(e.message);
+      setErrorMessage(e.message);
     } finally {
-      setBusy(false);
+      setIsBusy(false);
     }
   }
 
-  async function stop() {
-    setBusy(true);
-    setErr(null);
+  // Stop button: tell the backend to stop, then tear down our
+  // WebRTC connection and blank the video.
+  async function handleStop() {
+    setIsBusy(true);
+    setErrorMessage(null);
     try {
       await api.stopCamera(camera.id);
-      pcRef.current?.close();
-      pcRef.current = null;
+      peerConnectionRef.current?.close();
+      peerConnectionRef.current = null;
       if (videoRef.current) videoRef.current.srcObject = null;
-      setStreaming(false);
+      setIsReceivingVideo(false);
     } catch (e: any) {
-      setErr(e.message);
+      setErrorMessage(e.message);
     } finally {
-      setBusy(false);
+      setIsBusy(false);
     }
   }
 
-  async function del() {
+  // Delete button: confirm, close any open connection, delete on the
+  // backend, then tell the parent so it can remove this tile.
+  async function handleDelete() {
     if (!confirm(`Delete "${camera.name}"?`)) return;
-    pcRef.current?.close();
+    peerConnectionRef.current?.close();
     try {
       await api.deleteCamera(camera.id);
       onDeleted();
     } catch (e: any) {
-      setErr(e.message);
+      setErrorMessage(e.message);
     }
   }
 
-  useEffect(() => () => pcRef.current?.close(), []);
+  // When the tile unmounts, close the WebRTC connection so we don't
+  // leak it.
+  useEffect(() => () => peerConnectionRef.current?.close(), []);
 
-  // Auto-connect WebRTC when the camera is already running (page reload, or
-  // another session started it). Without this the tile shows "stream stopped"
-  // until the user clicks Start, even though detection is live over the WS.
-  // Guarded by pcRef so we never open a second peer connection.
+  // Auto-connect video when the camera is already running — e.g. after
+  // a page reload, or when another browser session started it. Without
+  // this the tile would say "stream stopped" until the user clicks
+  // Start, even though detection is live. The peerConnectionRef check
+  // makes sure we never open a second connection.
   useEffect(() => {
-    if (running && !pcRef.current) connectStream();
+    if (isRunning && !peerConnectionRef.current) connectVideoStream();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [running]);
+  }, [isRunning]);
 
   return (
     <div className="tile card">
+      {/* Header: camera name, location, status badge */}
       <div className="tile-head">
         <div className="tile-title">
           <strong>{camera.name}</strong>
           {camera.location && <span className="loc">{camera.location}</span>}
         </div>
-        <span className={`badge ${state}`}>
-          {STATE_LABEL[state] ?? state}
+        <span className={`badge ${cameraState}`}>
+          {STATE_LABEL[cameraState] ?? cameraState}
         </span>
       </div>
 
+      {/* Live video, with a text placeholder until frames arrive */}
       <div className="video-wrap">
         <video ref={videoRef} muted playsInline />
-        {!streaming && (
+        {!isReceivingVideo && (
           <div className="video-placeholder">
-            {state === "connecting" ? "connecting…" : "stream stopped"}
+            {cameraState === "connecting" ? "connecting…" : "stream stopped"}
           </div>
         )}
       </div>
 
+      {/* Stats row: "—" means no data yet */}
       <div className="stats">
         <span>FPS {stats?.fps != null ? stats.fps.toFixed(1) : "—"}</span>
         <span>det/min {stats?.detections_per_min ?? "—"}</span>
       </div>
 
-      {err && <p className="error">{err}</p>}
+      {errorMessage && <p className="error">{errorMessage}</p>}
 
+      {/* Action buttons: Start and Stop swap depending on state */}
       <div className="tile-actions">
-        {running ? (
-          <button onClick={stop} disabled={busy}>
+        {isRunning ? (
+          <button onClick={handleStop} disabled={isBusy}>
             Stop
           </button>
         ) : (
-          <button onClick={start} disabled={busy} className="primary">
+          <button onClick={handleStart} disabled={isBusy} className="primary">
             Start
           </button>
         )}
         <button onClick={onEdit}>Edit</button>
-        <button onClick={del} className="danger">
+        <button onClick={handleDelete} className="danger">
           Delete
         </button>
       </div>
 
+      {/* Last 5 alerts for this camera */}
       <div className="alerts">
         <div className="alerts-head">Recent alerts</div>
         {alerts.length === 0 ? (
           <p className="muted small">none yet</p>
         ) : (
-          alerts.slice(0, 5).map((a) => (
-            <div key={a.id} className="alert-row">
+          alerts.slice(0, 5).map((alert) => (
+            <div key={alert.id} className="alert-row">
               <span className="dot" />
               <span>
-                {a.count} person{a.count > 1 ? "s" : ""}
+                {alert.count} person{alert.count > 1 ? "s" : ""}
               </span>
               <span className="conf">
-                {Math.round((a.confidence ?? 0) * 100)}%
+                {Math.round((alert.confidence ?? 0) * 100)}%
               </span>
               <span className="time">
-                {new Date(a.ts).toLocaleTimeString()}
+                {new Date(alert.ts).toLocaleTimeString()}
               </span>
             </div>
           ))
