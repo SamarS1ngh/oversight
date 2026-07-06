@@ -54,8 +54,11 @@ services:
     environment:
       SEED_RTSP_URL: rtsp://localhost:8554/cam
       RECORDINGS_DIR: /recordings
+    # read-write: the API owns retention pruning and clip deletion, so it must be
+    # able to remove files, not just serve them (a :ro mount silently orphans
+    # every evicted/deleted clip's file and defeats the storage cap).
     volumes:
-      - recordings:/recordings:ro
+      - recordings:/recordings
     depends_on:
       postgres:
         condition: service_healthy
