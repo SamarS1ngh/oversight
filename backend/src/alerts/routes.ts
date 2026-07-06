@@ -1,7 +1,7 @@
 import { Hono } from "hono";
 import { and, desc, eq, gte, lte, getTableColumns } from "drizzle-orm";
 import { db } from "../db";
-import { alerts, cameras } from "../db/schema";
+import { alerts, cameras, clips } from "../db/schema";
 import { requireAuth } from "../auth/middleware";
 
 const UUID_RE =
@@ -34,9 +34,10 @@ alertRoutes.get("/", async (c) => {
   }
 
   const rows = await db
-    .select(getTableColumns(alerts))
+    .select({ ...getTableColumns(alerts), clipId: clips.id })
     .from(alerts)
     .innerJoin(cameras, eq(alerts.cameraId, cameras.id))
+    .leftJoin(clips, eq(clips.alertId, alerts.id))
     .where(and(...conds))
     .orderBy(desc(alerts.ts))
     .limit(limit)

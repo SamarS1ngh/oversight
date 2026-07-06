@@ -2,7 +2,7 @@ import { eq } from "drizzle-orm";
 import { redisSub } from "./redis";
 import { CHANNELS } from "./channels";
 import { db } from "../db";
-import { alerts, cameras } from "../db/schema";
+import { alerts, cameras, clips } from "../db/schema";
 import { ownerOf, sendToUser } from "./connections";
 import { handleAnswer } from "./signaling";
 
@@ -14,6 +14,7 @@ export function startIngest() {
     CHANNELS.detections,
     CHANNELS.stats,
     CHANNELS.webrtcAnswers,
+    CHANNELS.clips,
     (err) => {
       if (err) console.error("[ingest] subscribe failed:", err.message);
     },
@@ -29,9 +30,10 @@ export function startIngest() {
     if (channel === CHANNELS.detections) void onDetection(msg);
     else if (channel === CHANNELS.stats) void onStats(msg);
     else if (channel === CHANNELS.webrtcAnswers) handleAnswer(msg);
+    else if (channel === CHANNELS.clips) void onClip(msg);
   });
 
-  console.log("[ingest] subscribed to detections, stats, webrtc:answers");
+  console.log("[ingest] subscribed to detections, stats, webrtc:answers, clips");
 }
 
 async function onDetection(d: any) {
@@ -75,4 +77,33 @@ async function onStats(s: any) {
     const channel = s.type === "camera_state" ? "state" : "stats";
     sendToUser(owner, { channel, data: s });
   }
+}
+
+async function onClip(k: any) {
+  if (!k?.id || !k?.camera_id || !k?.path) return;
+  const base = {
+    id: k.id,
+    cameraId: k.camera_id,
+    backend: k.backend ?? "local",
+    path: k.path,
+    thumbPath: k.thumb_path ?? null,
+    startTs: new Date(k.start_ts),
+    endTs: new Date(k.end_ts),
+    durationMs: k.duration_ms ?? 0,
+    sizeBytes: k.size_bytes ?? 0,
+  };
+  try {
+    await db.insert(clips).values({ ...base, alertId: k.alert_id ?? null }).onConflictDoNothing();
+  } catch {
+    // The alert row may not have landed yet (FK). Store the clip unlinked
+    // rather than lose it.
+    try {
+      await db.insert(clips).values({ ...base, alertId: null }).onConflictDoNothing();
+    } catch (e) {
+      console.error("[ingest] clip insert failed:", (e as Error).message);
+      return;
+    }
+  }
+  const owner = await ownerOf(k.camera_id);
+  if (owner) sendToUser(owner, { channel: "clip", data: k });
 }

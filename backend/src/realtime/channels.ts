@@ -7,6 +7,7 @@ export const CHANNELS = {
   stats: "stats", // worker -> API (stats + state changes)
   webrtcRequests: "webrtc:requests", // API -> worker (SDP offer)
   webrtcAnswers: "webrtc:answers", // worker -> API (SDP answer)
+  clips: "clips", // worker -> API (clip_ready)
 } as const;
 
 export type CameraCommand =
