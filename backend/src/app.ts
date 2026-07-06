@@ -5,6 +5,7 @@ import { createBunWebSocket } from "hono/bun";
 import { authRoutes } from "./auth/routes";
 import { cameraRoutes } from "./cameras/routes";
 import { alertRoutes } from "./alerts/routes";
+import { clipRoutes } from "./clips/routes";
 import { requireAuth } from "./auth/middleware";
 import { verifyToken } from "./auth/jwt";
 import { addConn, removeConn } from "./realtime/connections";
@@ -21,6 +22,7 @@ app.get("/health", (c) => c.json({ ok: true }));
 app.route("/auth", authRoutes);
 app.route("/cameras", cameraRoutes);
 app.route("/alerts", alertRoutes);
+app.route("/clips", clipRoutes);
 
 app.get("/me", requireAuth, (c) =>
   c.json({ id: c.get("userId"), username: c.get("username") }),
