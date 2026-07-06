@@ -358,3 +358,30 @@ input[type="checkbox"] {
   font-size: 11px;
   text-shadow: 0 0 3px #000;
 }
+
+/* ---- events gallery ---- */
+.clip-card {
+  text-align: left;
+  padding: 0;
+  border: 1px solid #222;
+  border-radius: 8px;
+  overflow: hidden;
+  background: #111;
+  cursor: pointer;
+}
+.clip-thumb {
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  object-fit: cover;
+  display: block;
+  background: #000;
+}
+.clip-thumb.placeholder {
+  background: #222;
+}
+.clip-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 8px;
+}

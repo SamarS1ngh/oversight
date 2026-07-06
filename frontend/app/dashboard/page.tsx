@@ -106,6 +106,9 @@ export default function Dashboard() {
           >
             + Add camera
           </button>
+          <a href="/events" className="btn">
+            Recordings
+          </a>
           <button onClick={logout}>Logout</button>
         </div>
       </header>
