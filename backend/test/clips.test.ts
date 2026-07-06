@@ -168,8 +168,18 @@ beforeAll(async () => {
 
   const clipId = crypto.randomUUID();
   const path = `${cam.id}/${clipId}.mp4`;
-  await fs.mkdir(join(env.RECORDINGS_DIR, cam.id), { recursive: true });
-  await fs.writeFile(join(env.RECORDINGS_DIR, path), Buffer.alloc(1000, 65));
+  // Writing the fixture needs a writable RECORDINGS_DIR. On a dev host the
+  // default (/recordings) usually isn't writable, so self-skip the Range tests
+  // rather than fail the whole file — run them with RECORDINGS_DIR=$(mktemp -d).
+  try {
+    await fs.mkdir(join(env.RECORDINGS_DIR, cam.id), { recursive: true });
+    await fs.writeFile(join(env.RECORDINGS_DIR, path), Buffer.alloc(1000, 65));
+  } catch {
+    console.warn(
+      `  (Range tests skipped — RECORDINGS_DIR not writable: ${env.RECORDINGS_DIR})`,
+    );
+    return;
+  }
 
   const now = new Date();
   await db.insert(clips).values({
