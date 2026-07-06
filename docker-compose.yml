@@ -53,6 +53,9 @@ services:
     # dials must be reachable via the host-published RTSP port.
     environment:
       SEED_RTSP_URL: rtsp://localhost:8554/cam
+      RECORDINGS_DIR: /recordings
+    volumes:
+      - recordings:/recordings:ro
     depends_on:
       postgres:
         condition: service_healthy
@@ -72,6 +75,9 @@ services:
     environment:
       REDIS_URL: redis://localhost:6379
       API_BASE_URL: http://localhost:8080
+      RECORDINGS_DIR: /recordings
+    volumes:
+      - recordings:/recordings
     depends_on:
       - redis
       - mediamtx
@@ -87,3 +93,4 @@ services:
 
 volumes:
   pgdata:
+  recordings:

@@ -9,6 +9,10 @@ Python worker that ingests RTSP, runs **YOLOv8n** person detection, and re-strea
 the annotated video to the browser. Postgres stores users/cameras/alerts; Redis is
 the message bus. Everything runs with one `docker compose up`.
 
+Event clips are now recorded on detection (with a few seconds of pre-roll) and
+served from `/clips` — each alert links to a short **video clip + thumbnail**,
+also browsable in **Recordings**.
+
 ![Live person detection with bounding box](docs/screenshots/03-live-detection.png)
 
 | Dashboard | Live WebRTC stream |
@@ -42,6 +46,23 @@ Copy the environment file (defaults work out of the box):
 ```bash
 cp .env.example .env
 ```
+
+---
+
+## Configuration
+
+Selected env vars (see [`.env.example`](.env.example) for the full list) — the
+recording knobs added for the clip/thumbnail feature:
+
+| Variable | Default | Used by | Purpose |
+|---|---|---|---|
+| `PRE_ROLL_S` | `10` | worker | seconds of footage kept before a trigger |
+| `POST_ROLL_S` | `10` | worker | seconds recorded after the last trigger |
+| `MAX_CLIP_LEN_S` | `120` | worker | hard cap on a single (extended) clip |
+| `RECORDINGS_DIR` | `/recordings` | worker, backend | clip/thumbnail storage root (shared volume) |
+| `STORAGE_BACKEND` | `local` | worker | clip storage backend |
+| `RETENTION_DAYS` | `7` | backend | delete clips older than this |
+| `MAX_STORAGE_GB` | `10` | backend | evict oldest clips past this total |
 
 ---
 
