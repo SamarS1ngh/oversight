@@ -7,4 +7,7 @@ export const env = {
   JWT_SECRET: process.env.JWT_SECRET ?? "dev_secret_change_me",
   API_PORT: Number(process.env.API_PORT ?? 8080),
   WORKER_ID: process.env.WORKER_ID ?? "worker-1",
+  RECORDINGS_DIR: process.env.RECORDINGS_DIR ?? "/recordings",
+  RETENTION_DAYS: Number(process.env.RETENTION_DAYS ?? 7),
+  MAX_STORAGE_GB: Number(process.env.MAX_STORAGE_GB ?? 10),
 };
