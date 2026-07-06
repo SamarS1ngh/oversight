@@ -85,3 +85,55 @@ clipRoutes.delete("/:id", async (c) => {
   await db.delete(clips).where(eq(clips.id, clip.id));
   return c.body(null, 204);
 });
+
+// GET /clips/:id/video — streams MP4 with HTTP Range support so the browser can
+// seek/scrub. Auth via header or ?token=.
+clipRoutes.get("/:id/video", async (c) => {
+  const userId = await userIdFrom(c);
+  if (!userId) return c.json({ error: "unauthorized" }, 401);
+  const clip = await ownedClip(userId, c.req.param("id"));
+  if (!clip) return c.json({ error: "not found" }, 404);
+
+  const file = Bun.file(join(env.RECORDINGS_DIR, clip.path));
+  if (!(await file.exists())) return c.json({ error: "gone" }, 404);
+  const size = file.size;
+  const range = c.req.header("range");
+
+  if (range) {
+    const m = /bytes=(\d+)-(\d*)/.exec(range);
+    const start = m ? Number(m[1]) : 0;
+    const end = m && m[2] ? Math.min(Number(m[2]), size - 1) : size - 1;
+    if (start >= size || start > end) {
+      return new Response("", { status: 416, headers: { "content-range": `bytes */${size}` } });
+    }
+    return new Response(file.slice(start, end + 1), {
+      status: 206,
+      headers: {
+        "content-type": "video/mp4",
+        "content-range": `bytes ${start}-${end}/${size}`,
+        "accept-ranges": "bytes",
+        "content-length": String(end - start + 1),
+      },
+    });
+  }
+
+  return new Response(file, {
+    headers: {
+      "content-type": "video/mp4",
+      "content-length": String(size),
+      "accept-ranges": "bytes",
+    },
+  });
+});
+
+// GET /clips/:id/thumb — jpeg poster.
+clipRoutes.get("/:id/thumb", async (c) => {
+  const userId = await userIdFrom(c);
+  if (!userId) return c.json({ error: "unauthorized" }, 401);
+  const clip = await ownedClip(userId, c.req.param("id"));
+  if (!clip || !clip.thumbPath) return c.json({ error: "not found" }, 404);
+
+  const file = Bun.file(join(env.RECORDINGS_DIR, clip.thumbPath));
+  if (!(await file.exists())) return c.json({ error: "gone" }, 404);
+  return new Response(file, { headers: { "content-type": "image/jpeg" } });
+});

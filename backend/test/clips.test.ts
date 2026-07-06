@@ -124,3 +124,16 @@ test("DELETE /clips/:id as the owner removes the clip", async () => {
   const after = await a.authed("/clips");
   expect((await after.json()).clips).toEqual([]);
 });
+
+test("GET /clips/:id/video 404s for an unknown id (token via query)", async () => {
+  if (!dbUp) return;
+  const r = await call("/auth/signup", json({ username: "clip3_" + rnd(), password: "secret12" }));
+  const { token } = await r.json();
+  const res = await call(`/clips/11111111-1111-1111-1111-111111111111/video?token=${token}`);
+  expect(res.status).toBe(404);
+});
+
+test("GET /clips/:id/video without any token is 401", async () => {
+  const res = await call("/clips/11111111-1111-1111-1111-111111111111/video");
+  expect(res.status).toBe(401);
+});
