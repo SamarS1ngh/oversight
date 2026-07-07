@@ -55,6 +55,7 @@ zoneRoutes.post("/", async (c) => {
 zoneRoutes.patch("/:zoneId", async (c) => {
   const cam = await ownedCamera(c.get("userId"), c.req.param("cameraId"));
   if (!cam) return c.json({ error: "not found" }, 404);
+  if (!UUID_RE.test(c.req.param("zoneId"))) return c.json({ error: "not found" }, 404);
   const b = await c.req.json().catch(() => ({}));
   const patch: Record<string, unknown> = {};
   if (typeof b.name === "string") patch.name = b.name.trim();
@@ -62,6 +63,7 @@ zoneRoutes.patch("/:zoneId", async (c) => {
     if (!validPolygon(b.polygon)) return c.json({ error: "polygon must be >=3 points in [0,1]" }, 400);
     patch.polygon = b.polygon;
   }
+  if (Object.keys(patch).length === 0) return c.json({ error: "nothing to update" }, 400);
   const [updated] = await db
     .update(zones)
     .set(patch)
@@ -74,6 +76,7 @@ zoneRoutes.patch("/:zoneId", async (c) => {
 zoneRoutes.delete("/:zoneId", async (c) => {
   const cam = await ownedCamera(c.get("userId"), c.req.param("cameraId"));
   if (!cam) return c.json({ error: "not found" }, 404);
+  if (!UUID_RE.test(c.req.param("zoneId"))) return c.json({ error: "not found" }, 404);
   await db.delete(zones).where(and(eq(zones.id, c.req.param("zoneId")), eq(zones.cameraId, cam.id)));
   return c.body(null, 204);
 });
