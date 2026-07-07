@@ -6,6 +6,7 @@ import { authRoutes } from "./auth/routes";
 import { cameraRoutes } from "./cameras/routes";
 import { alertRoutes } from "./alerts/routes";
 import { clipRoutes } from "./clips/routes";
+import { zoneRoutes } from "./rules/routes";
 import { requireAuth } from "./auth/middleware";
 import { verifyToken } from "./auth/jwt";
 import { addConn, removeConn } from "./realtime/connections";
@@ -21,6 +22,7 @@ app.use("*", cors());
 app.get("/health", (c) => c.json({ ok: true }));
 app.route("/auth", authRoutes);
 app.route("/cameras", cameraRoutes);
+app.route("/cameras/:cameraId/zones", zoneRoutes);
 app.route("/alerts", alertRoutes);
 app.route("/clips", clipRoutes);
 
