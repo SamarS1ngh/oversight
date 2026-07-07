@@ -62,6 +62,20 @@ export function CameraTile({
   // True while the rules panel modal is open.
   const [showRules, setShowRules] = useState(false);
 
+  // Optimistic ack/resolve status overrides, keyed by alert id, so the
+  // row updates immediately instead of waiting on the next poll/WS push.
+  const [localStatus, setLocalStatus] = useState<Record<string, string>>({});
+
+  async function ackAlert(id: string) {
+    await api.ackAlert(id);
+    setLocalStatus((s) => ({ ...s, [id]: "acked" }));
+  }
+
+  async function resolveAlert(id: string) {
+    await api.resolveAlert(id);
+    setLocalStatus((s) => ({ ...s, [id]: "resolved" }));
+  }
+
   // What state is the camera in right now?
   // Websocket value wins; database value is the fallback.
   const cameraState = liveState ?? camera.status;
@@ -204,27 +218,43 @@ export function CameraTile({
         {alerts.length === 0 ? (
           <p className="muted small">none yet</p>
         ) : (
-          alerts.slice(0, 5).map((alert) => (
-            <div key={alert.id} className="alert-row">
-              {alert.clipId ? (
-                <button
-                  className="thumb-btn"
-                  title="Play clip"
-                  onClick={() => onPlayClip(alert.clipId!)}
-                >
-                  <img src={clipThumbUrl(alert.clipId)} alt="" className="thumb" />
-                  <span className="play-badge">▶</span>
-                </button>
-              ) : (
-                <span className="dot" />
-              )}
-              <span>
-                {alert.count} person{alert.count > 1 ? "s" : ""}
-              </span>
-              <span className="conf">{Math.round((alert.confidence ?? 0) * 100)}%</span>
-              <span className="time">{new Date(alert.ts).toLocaleTimeString()}</span>
-            </div>
-          ))
+          alerts.slice(0, 5).map((alert) => {
+            const status = localStatus[alert.id] ?? alert.status;
+            return (
+              <div
+                key={alert.id}
+                className={`alert-row sev-${alert.severity ?? "low"} ${
+                  status === "resolved" ? "resolved" : ""
+                }`}
+              >
+                {alert.clipId ? (
+                  <button
+                    className="thumb-btn"
+                    title="Play clip"
+                    onClick={() => onPlayClip(alert.clipId!)}
+                  >
+                    <img src={clipThumbUrl(alert.clipId)} alt="" className="thumb" />
+                    <span className="play-badge">▶</span>
+                  </button>
+                ) : (
+                  <span className={`dot sev-${alert.severity ?? "low"}`} />
+                )}
+                <span>
+                  {alert.count}× {alert.label ?? "person"}
+                </span>
+                <span className="conf">{Math.round((alert.confidence ?? 0) * 100)}%</span>
+                <span className="time">{new Date(alert.ts).toLocaleTimeString()}</span>
+                {status !== "resolved" && (
+                  <span className="ack-actions">
+                    {status !== "acked" && (
+                      <button onClick={() => ackAlert(alert.id)}>Ack</button>
+                    )}
+                    <button onClick={() => resolveAlert(alert.id)}>Resolve</button>
+                  </span>
+                )}
+              </div>
+            );
+          })
         )}
       </div>
 
