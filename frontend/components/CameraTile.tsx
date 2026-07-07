@@ -4,6 +4,7 @@ import type { Alert, Camera, CamStats } from "@/lib/types";
 import { api, clipThumbUrl } from "@/lib/api";
 import { connectCameraStream } from "@/lib/webrtc";
 import { ZoneEditor } from "./ZoneEditor";
+import { RulesPanel } from "./RulesPanel";
 
 // One tile on the dashboard = one camera.
 // It shows the live video, some stats, recent alerts, and
@@ -57,6 +58,9 @@ export function CameraTile({
 
   // True while the zone editor modal is open.
   const [showZones, setShowZones] = useState(false);
+
+  // True while the rules panel modal is open.
+  const [showRules, setShowRules] = useState(false);
 
   // What state is the camera in right now?
   // Websocket value wins; database value is the fallback.
@@ -188,6 +192,7 @@ export function CameraTile({
         )}
         <button onClick={onEdit}>Edit</button>
         <button onClick={() => setShowZones(true)}>Zones</button>
+        <button onClick={() => setShowRules(true)}>Rules</button>
         <button onClick={handleDelete} className="danger">
           Delete
         </button>
@@ -229,6 +234,10 @@ export function CameraTile({
           videoEl={videoRef.current}
           onClose={() => setShowZones(false)}
         />
+      )}
+
+      {showRules && (
+        <RulesPanel camera={camera} onClose={() => setShowRules(false)} />
       )}
     </div>
   );
