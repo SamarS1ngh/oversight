@@ -36,7 +36,7 @@ export default function Dashboard() {
       const map: Record<string, Alert[]> = {};
       await Promise.all(
         cams.map(async (c) => {
-          const r = await api.listAlerts(c.id, 5);
+          const r = await api.listAlerts({ cameraId: c.id, limit: 5 });
           map[c.id] = r.alerts;
         }),
       );

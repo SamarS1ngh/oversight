@@ -11,6 +11,9 @@ export type Camera = {
   updatedAt: string;
 };
 
+export type Severity = "low" | "medium" | "high";
+export type AlertStatus = "new" | "acked" | "resolved";
+
 export type Alert = {
   id: string;
   cameraId: string;
@@ -23,6 +26,33 @@ export type Alert = {
   frameH: number | null;
   workerId: string | null;
   clipId?: string | null;
+  label?: string | null;
+  ruleId?: string | null;
+  severity?: Severity;
+  status?: AlertStatus;
+};
+
+export type Zone = {
+  id: string;
+  cameraId: string;
+  name: string;
+  polygon: { x: number; y: number }[];
+  createdAt: string;
+};
+
+export type Rule = {
+  id: string;
+  cameraId: string;
+  name: string;
+  zoneId: string | null;
+  classes: string[];
+  scheduleStart: string | null;
+  scheduleEnd: string | null;
+  minConfidence: number;
+  severity: Severity;
+  enabled: boolean;
+  createdAt: string;
+  updatedAt: string;
 };
 
 export type CamStats = {

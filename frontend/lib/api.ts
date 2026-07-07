@@ -58,8 +58,32 @@ export const api = {
   startCamera: (id: string) => req(`/cameras/${id}/start`, { method: "POST" }),
   stopCamera: (id: string) => req(`/cameras/${id}/stop`, { method: "POST" }),
 
-  listAlerts: (cameraId?: string, limit = 20) =>
-    req(`/alerts?${cameraId ? `camera_id=${cameraId}&` : ""}limit=${limit}`),
+  listAlerts: (
+    params: { cameraId?: string; severity?: string; status?: string; limit?: number } = {},
+  ) => {
+    const q = new URLSearchParams();
+    if (params.cameraId) q.set("camera_id", params.cameraId);
+    if (params.severity) q.set("severity", params.severity);
+    if (params.status) q.set("status", params.status);
+    q.set("limit", String(params.limit ?? 20));
+    return req(`/alerts?${q.toString()}`);
+  },
+  ackAlert: (id: string) => req(`/alerts/${id}/ack`, { method: "POST" }),
+  resolveAlert: (id: string) => req(`/alerts/${id}/resolve`, { method: "POST" }),
+
+  listZones: (cameraId: string) => req(`/cameras/${cameraId}/zones`),
+  createZone: (cameraId: string, body: Record<string, unknown>) =>
+    req(`/cameras/${cameraId}/zones`, { method: "POST", body: JSON.stringify(body) }),
+  deleteZone: (cameraId: string, zoneId: string) =>
+    req(`/cameras/${cameraId}/zones/${zoneId}`, { method: "DELETE" }),
+
+  listRules: (cameraId: string) => req(`/cameras/${cameraId}/rules`),
+  createRule: (cameraId: string, body: Record<string, unknown>) =>
+    req(`/cameras/${cameraId}/rules`, { method: "POST", body: JSON.stringify(body) }),
+  updateRule: (cameraId: string, ruleId: string, body: Record<string, unknown>) =>
+    req(`/cameras/${cameraId}/rules/${ruleId}`, { method: "PATCH", body: JSON.stringify(body) }),
+  deleteRule: (cameraId: string, ruleId: string) =>
+    req(`/cameras/${cameraId}/rules/${ruleId}`, { method: "DELETE" }),
 
   listClips: (cameraId?: string, limit = 50) =>
     req(`/clips?${cameraId ? `camera_id=${cameraId}&` : ""}limit=${limit}`),
