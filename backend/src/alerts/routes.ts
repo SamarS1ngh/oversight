@@ -32,6 +32,10 @@ alertRoutes.get("/", async (c) => {
   if (to && !Number.isNaN(Date.parse(to))) {
     conds.push(lte(alerts.ts, new Date(to)));
   }
+  const severity = c.req.query("severity");
+  const status = c.req.query("status");
+  if (severity) conds.push(eq(alerts.severity, severity));
+  if (status) conds.push(eq(alerts.status, status));
 
   const rows = await db
     .select({ ...getTableColumns(alerts), clipId: clips.id })
@@ -44,4 +48,29 @@ alertRoutes.get("/", async (c) => {
     .offset(offset);
 
   return c.json({ alerts: rows, limit, offset, count: rows.length });
+});
+
+async function ownedAlert(userId: string, id: string) {
+  if (!UUID_RE.test(id)) return null;
+  const [row] = await db
+    .select({ id: alerts.id })
+    .from(alerts)
+    .innerJoin(cameras, eq(alerts.cameraId, cameras.id))
+    .where(and(eq(alerts.id, id), eq(cameras.userId, userId)))
+    .limit(1);
+  return row ?? null;
+}
+
+alertRoutes.post("/:id/ack", async (c) => {
+  const owned = await ownedAlert(c.get("userId"), c.req.param("id"));
+  if (!owned) return c.json({ error: "not found" }, 404);
+  const [updated] = await db.update(alerts).set({ status: "acked", ackedAt: new Date() }).where(eq(alerts.id, owned.id)).returning();
+  return c.json(updated);
+});
+
+alertRoutes.post("/:id/resolve", async (c) => {
+  const owned = await ownedAlert(c.get("userId"), c.req.param("id"));
+  if (!owned) return c.json({ error: "not found" }, 404);
+  const [updated] = await db.update(alerts).set({ status: "resolved", resolvedAt: new Date() }).where(eq(alerts.id, owned.id)).returning();
+  return c.json(updated);
 });

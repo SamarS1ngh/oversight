@@ -53,6 +53,9 @@ async function onDetection(d: any) {
         frameW: d.frame_w ?? null,
         frameH: d.frame_h ?? null,
         workerId: d.worker_id ?? null,
+        label: d.label ?? null,
+        ruleId: d.rule_id ?? null,
+        severity: d.severity ?? "low",
       })
       .onConflictDoNothing();
   } catch (e) {

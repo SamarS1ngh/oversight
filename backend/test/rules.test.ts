@@ -2,6 +2,7 @@ import { test, expect, beforeAll } from "bun:test";
 import { sql } from "drizzle-orm";
 import { app } from "../src/app";
 import { db } from "../src/db";
+import { alerts } from "../src/db/schema";
 import { resolveRules } from "../src/rules/routes";
 
 let dbUp = false;
@@ -96,4 +97,28 @@ test("resolveRules inlines the zone polygon and only returns enabled rules", asy
   expect(resolved[0].zone).toEqual(poly);
   expect(resolved[0].classes).toEqual(["person"]);
   expect(resolved[0].severity).toBe("high");
+});
+
+test("alerts severity/status filter + ack + resolve", async () => {
+  if (!dbUp) return;
+  const a = await user();
+  const id = crypto.randomUUID();
+  await db.insert(alerts).values({ id, cameraId: a.cam.id, type: "detection", ts: new Date(), confidence: 0.9, count: 1, label: "person", severity: "high", status: "new" });
+  // filter by severity
+  const hi = await (await a.authed(`/alerts?severity=high`)).json();
+  expect(hi.alerts.some((x: any) => x.id === id)).toBe(true);
+  const lo = await (await a.authed(`/alerts?severity=low`)).json();
+  expect(lo.alerts.some((x: any) => x.id === id)).toBe(false);
+  // ack
+  const ack = await a.authed(`/alerts/${id}/ack`, { method: "POST" });
+  expect(ack.status).toBe(200);
+  const acked = await (await a.authed(`/alerts?status=acked`)).json();
+  expect(acked.alerts.some((x: any) => x.id === id)).toBe(true);
+  // resolve
+  const res = await a.authed(`/alerts/${id}/resolve`, { method: "POST" });
+  expect(res.status).toBe(200);
+  // another user cannot ack it
+  const b = await user();
+  const bad = await b.authed(`/alerts/${id}/ack`, { method: "POST" });
+  expect(bad.status).toBe(404);
 });
