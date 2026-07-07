@@ -55,6 +55,12 @@ export const alerts = pgTable(
     frameW: integer("frame_w"),
     frameH: integer("frame_h"),
     workerId: text("worker_id"),
+    label: text("label"),
+    ruleId: uuid("rule_id"),
+    severity: text("severity").notNull().default("low"),
+    status: text("status").notNull().default("new"),
+    ackedAt: timestamp("acked_at", { withTimezone: true }),
+    resolvedAt: timestamp("resolved_at", { withTimezone: true }),
     createdAt: timestamp("created_at", { withTimezone: true })
       .notNull()
       .defaultNow(),
@@ -96,7 +102,53 @@ export const clips = pgTable(
   }),
 );
 
+// A drawn region of interest on a camera. `polygon` is normalized [0,1] points.
+export const zones = pgTable(
+  "zones",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    cameraId: uuid("camera_id")
+      .notNull()
+      .references(() => cameras.id, { onDelete: "cascade" }),
+    name: text("name").notNull(),
+    polygon: jsonb("polygon").notNull(), // [{ x:0.1, y:0.2 }, ...] normalized, >=3 pts
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => ({ cameraIdx: index("zones_camera_idx").on(t.cameraId) }),
+);
+
+// An alerting rule. Matches when a detected object of one of `classes`, above
+// `minConfidence`, (inside `zoneId` if set) fires during the schedule window.
+export const rules = pgTable(
+  "rules",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    cameraId: uuid("camera_id")
+      .notNull()
+      .references(() => cameras.id, { onDelete: "cascade" }),
+    name: text("name").notNull(),
+    zoneId: uuid("zone_id").references(() => zones.id, { onDelete: "set null" }),
+    classes: jsonb("classes").notNull(), // ["person","car"]
+    scheduleStart: text("schedule_start"), // "HH:MM" local, nullable
+    scheduleEnd: text("schedule_end"),
+    minConfidence: real("min_confidence").notNull().default(0.4),
+    severity: text("severity").notNull().default("low"),
+    enabled: boolean("enabled").notNull().default(true),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => ({ cameraIdx: index("rules_camera_idx").on(t.cameraId) }),
+);
+
 export type User = typeof users.$inferSelect;
 export type Camera = typeof cameras.$inferSelect;
 export type Alert = typeof alerts.$inferSelect;
 export type Clip = typeof clips.$inferSelect;
+export type Zone = typeof zones.$inferSelect;
+export type Rule = typeof rules.$inferSelect;
