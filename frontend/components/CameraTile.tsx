@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from "react";
 import type { Alert, Camera, CamStats } from "@/lib/types";
 import { api, clipThumbUrl } from "@/lib/api";
 import { connectCameraStream } from "@/lib/webrtc";
+import { ZoneEditor } from "./ZoneEditor";
 
 // One tile on the dashboard = one camera.
 // It shows the live video, some stats, recent alerts, and
@@ -53,6 +54,9 @@ export function CameraTile({
 
   // True once video frames are actually arriving.
   const [isReceivingVideo, setIsReceivingVideo] = useState(false);
+
+  // True while the zone editor modal is open.
+  const [showZones, setShowZones] = useState(false);
 
   // What state is the camera in right now?
   // Websocket value wins; database value is the fallback.
@@ -183,6 +187,7 @@ export function CameraTile({
           </button>
         )}
         <button onClick={onEdit}>Edit</button>
+        <button onClick={() => setShowZones(true)}>Zones</button>
         <button onClick={handleDelete} className="danger">
           Delete
         </button>
@@ -217,6 +222,14 @@ export function CameraTile({
           ))
         )}
       </div>
+
+      {showZones && (
+        <ZoneEditor
+          camera={camera}
+          videoEl={videoRef.current}
+          onClose={() => setShowZones(false)}
+        />
+      )}
     </div>
   );
 }

@@ -385,3 +385,7 @@ input[type="checkbox"] {
   gap: 2px;
   padding: 8px;
 }
+
+/* ---- zone editor ---- */
+.zone-list { margin-top: 8px; max-height: 120px; overflow-y: auto; }
+.zone-row { display: flex; justify-content: space-between; align-items: center; padding: 4px 0; }
