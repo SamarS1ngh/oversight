@@ -97,7 +97,20 @@ function validateRuleBody(b: any): string | null {
     if (b[k] !== undefined && b[k] !== null && !HHMM.test(b[k])) return `${k} must be HH:MM`;
   }
   if (b.minConfidence !== undefined && (typeof b.minConfidence !== "number" || b.minConfidence < 0 || b.minConfidence > 1)) return "minConfidence must be 0..1";
+  if (b.enabled !== undefined && typeof b.enabled !== "boolean") return "enabled must be boolean";
   return null;
+}
+
+// A rule may only reference a zone that belongs to the same camera. UUID-guarded
+// so a malformed id is a clean 400, not a Postgres cast error.
+async function zoneBelongs(cameraId: string, zoneId: string): Promise<boolean> {
+  if (!UUID_RE.test(zoneId)) return false;
+  const [z] = await db
+    .select({ id: zones.id })
+    .from(zones)
+    .where(and(eq(zones.id, zoneId), eq(zones.cameraId, cameraId)))
+    .limit(1);
+  return !!z;
 }
 
 // mounted at /cameras/:cameraId/rules
@@ -118,14 +131,13 @@ ruleRoutes.post("/", async (c) => {
   const err = validateRuleBody(b);
   if (err) return c.json({ error: err }, 400);
   // if a zone is given it must belong to this camera
-  if (b.zoneId) {
-    const [z] = await db.select({ id: zones.id }).from(zones).where(and(eq(zones.id, b.zoneId), eq(zones.cameraId, cam.id))).limit(1);
-    if (!z) return c.json({ error: "zone not found for this camera" }, 400);
+  if (b.zoneId && !(await zoneBelongs(cam.id, b.zoneId))) {
+    return c.json({ error: "zone not found for this camera" }, 400);
   }
   const [rule] = await db.insert(rules).values({
     cameraId: cam.id,
     name: b.name.trim(),
-    zoneId: b.zoneId ?? null,
+    zoneId: b.zoneId || null,
     classes: b.classes,
     scheduleStart: b.scheduleStart ?? null,
     scheduleEnd: b.scheduleEnd ?? null,
@@ -142,13 +154,19 @@ ruleRoutes.patch("/:ruleId", async (c) => {
   if (!UUID_RE.test(c.req.param("ruleId"))) return c.json({ error: "not found" }, 404);
   const b = await c.req.json().catch(() => ({}));
   // validate only provided fields by merging onto a minimal valid base
-  const merged = { name: b.name ?? "x", classes: b.classes ?? ["person"], severity: b.severity, scheduleStart: b.scheduleStart, scheduleEnd: b.scheduleEnd, minConfidence: b.minConfidence };
+  const merged = { name: b.name ?? "x", classes: b.classes ?? ["person"], severity: b.severity, scheduleStart: b.scheduleStart, scheduleEnd: b.scheduleEnd, minConfidence: b.minConfidence, enabled: b.enabled };
   const err = validateRuleBody(merged);
   if (err) return c.json({ error: err }, 400);
+  // a patched zone must also belong to this camera (same rule as POST)
+  if (b.zoneId && !(await zoneBelongs(cam.id, b.zoneId))) {
+    return c.json({ error: "zone not found for this camera" }, 400);
+  }
   const patch: Record<string, unknown> = { updatedAt: new Date() };
   for (const k of ["name", "classes", "zoneId", "scheduleStart", "scheduleEnd", "minConfidence", "severity", "enabled"]) {
     if (b[k] !== undefined) patch[k === "name" ? "name" : k] = k === "name" ? String(b[k]).trim() : b[k];
   }
+  // clearing the zone (null / "") normalizes to null; never store an empty string in a uuid column
+  if ("zoneId" in patch && !patch.zoneId) patch.zoneId = null;
   const [updated] = await db.update(rules).set(patch).where(and(eq(rules.id, c.req.param("ruleId")), eq(rules.cameraId, cam.id))).returning();
   if (!updated) return c.json({ error: "not found" }, 404);
   return c.json(updated);

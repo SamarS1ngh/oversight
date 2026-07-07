@@ -67,3 +67,18 @@ test("reject unknown class, bad severity, bad schedule", async () => {
   const badTime = await a.authed(`/cameras/${a.cam.id}/rules`, json({ name: "x", classes: ["person"], scheduleStart: "9am" }));
   expect(badTime.status).toBe(400);
 });
+
+test("a rule cannot reference another camera's zone (POST or PATCH)", async () => {
+  if (!dbUp) return;
+  const a = await user();
+  const b = await user();
+  // b's zone, on b's camera
+  const bZone = await (await b.authed(`/cameras/${b.cam.id}/zones`, json({ name: "bz", polygon: [{ x: 0.1, y: 0.1 }, { x: 0.9, y: 0.1 }, { x: 0.5, y: 0.9 }] }))).json();
+  // a tries to POST a rule on a's camera referencing b's zone -> 400
+  const post = await a.authed(`/cameras/${a.cam.id}/rules`, json({ name: "steal", classes: ["person"], zoneId: bZone.id }));
+  expect(post.status).toBe(400);
+  // a creates a valid rule, then tries to PATCH its zone to b's zone -> 400
+  const rule = await (await a.authed(`/cameras/${a.cam.id}/rules`, json({ name: "ok", classes: ["person"] }))).json();
+  const patch = await a.authed(`/cameras/${a.cam.id}/rules/${rule.id}`, { method: "PATCH", body: JSON.stringify({ zoneId: bZone.id }) });
+  expect(patch.status).toBe(400);
+});
