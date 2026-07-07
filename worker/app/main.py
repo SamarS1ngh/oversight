@@ -10,6 +10,7 @@ from .config import (
     DEDUP_WINDOW_MS,
     MAX_EVENTS_PER_MIN,
     MODEL_PATH,
+    MODEL_CLASSES,
     REDIS_URL,
 )
 from .dedup import DedupRateLimiter
@@ -28,7 +29,7 @@ class WorkerApp:
         self.sub = aioredis.from_url(REDIS_URL)
         self.pub = aioredis.from_url(REDIS_URL)
         log.info("loading detector %s ...", MODEL_PATH)
-        self.detector = YoloDetector(MODEL_PATH, CONF_THRESHOLD)
+        self.detector = YoloDetector(MODEL_PATH, CONF_THRESHOLD, MODEL_CLASSES)
         self.limiter = DedupRateLimiter(DEDUP_WINDOW_MS, MAX_EVENTS_PER_MIN)
         self.workers: dict[str, CameraWorker] = {}
 
@@ -49,11 +50,17 @@ class WorkerApp:
             if cid in self.workers:
                 return  # already running
             worker = CameraWorker(
-                cid, cmd["rtsp_url"], self.detector, self.publish, self.limiter
+                cid, cmd["rtsp_url"], self.detector, self.publish, self.limiter,
+                cmd.get("rules", []),
             )
             self.workers[cid] = worker
             worker.start()
-            log.info("started camera %s", cid)
+            log.info("started camera %s (%d rules)", cid, len(cmd.get("rules", [])))
+        elif kind == "rules_update":
+            worker = self.workers.get(cid)
+            if worker:
+                worker.set_rules(cmd.get("rules", []))
+                log.info("updated rules for camera %s (%d)", cid, len(cmd.get("rules", [])))
         elif kind == "stop":
             worker = self.workers.pop(cid, None)
             if worker:

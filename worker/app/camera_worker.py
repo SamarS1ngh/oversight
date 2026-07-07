@@ -16,9 +16,12 @@ from .config import (
     MAX_CLIP_LEN_S,
     RECORDINGS_DIR,
     STORAGE_BACKEND,
+    CONF_THRESHOLD,
+    TZ,
 )
 from .events import detection_event, stats_event, state_event
 from .recorder import Recorder
+from .rules import evaluate as evaluate_rules
 
 log = logging.getLogger("camera")
 
@@ -54,12 +57,13 @@ class CameraWorker:
     An exception in here is caught and surfaced as an 'error' state — it never
     takes down sibling cameras."""
 
-    def __init__(self, camera_id, rtsp_url, detector, publish, limiter):
+    def __init__(self, camera_id, rtsp_url, detector, publish, limiter, rules=None):
         self.camera_id = camera_id
         self.rtsp_url = rtsp_url
         self.detector = detector
         self._publish = publish  # async callable(channel: str, payload: dict)
         self.limiter = limiter
+        self.rules = rules or []
 
         self.latest_frame: VideoFrame | None = None
         self.state = "connecting"
@@ -129,6 +133,18 @@ class CameraWorker:
 
     def register_pc(self, pc) -> None:
         self._pcs.add(pc)
+
+    def set_rules(self, rules) -> None:
+        self.rules = rules or []
+
+    def _now_hhmm(self) -> str:
+        from datetime import datetime
+        from zoneinfo import ZoneInfo
+        try:
+            tz = ZoneInfo(TZ)
+        except Exception:
+            tz = ZoneInfo("UTC")
+        return datetime.now(tz).strftime("%H:%M")
 
     # ---------- async side ----------
     async def _emit(self, channel: str, payload: dict) -> None:
@@ -201,11 +217,11 @@ class CameraWorker:
 
                     boxes = []
                     if frame_count % DETECT_EVERY_N == 0:
-                        boxes = self.detector.detect_persons(img)
+                        boxes = self.detector.detect_objects(img)
 
                     annotated = self._annotate(img, boxes)
                     if boxes:
-                        self._maybe_emit_detection(img, boxes, now, annotated)
+                        self._emit_matches(img, boxes, now, annotated)
 
                     self.latest_frame = VideoFrame.from_ndarray(annotated, format="bgr24")
 
@@ -225,34 +241,35 @@ class CameraWorker:
             except Exception:
                 pass
 
-    def _maybe_emit_detection(self, img, boxes, now_ms: float, annotated) -> None:
-        self._det_times.append(now_ms)
-        count = len(boxes)
-        if not self.limiter.should_emit(self.camera_id, count, now_ms):
+    def _emit_matches(self, img, boxes, now_ms: float, annotated) -> None:
+        matches = evaluate_rules(boxes, self.rules, self._now_hhmm(), CONF_THRESHOLD)
+        if not matches:
             return
+        self._det_times.append(now_ms)
         h, w = img.shape[:2]
-        conf = max(b.conf for b in boxes)
-        payload = detection_event(
-            self.camera_id,
-            conf,
-            count,
-            [
-                {
-                    "x": round(b.x, 4),
-                    "y": round(b.y, 4),
-                    "w": round(b.w, 4),
-                    "h": round(b.h, 4),
-                    "conf": b.conf,
-                }
-                for b in boxes
-            ],
-            w,
-            h,
-            WORKER_ID,
-        )
-        self._evq.put(("detections", payload))
-        # start/extend an event clip, using this detection's id as the link
-        self.recorder.trigger(annotated, payload["id"])
+        first_emitted_id = None
+        for m in matches:
+            key = f"{self.camera_id}:{m.rule_id or ''}"
+            if not self.limiter.should_emit(key, m.count, now_ms):
+                continue
+            payload = detection_event(
+                self.camera_id,
+                m.confidence,
+                m.count,
+                [
+                    {"x": round(b.x, 4), "y": round(b.y, 4), "w": round(b.w, 4),
+                     "h": round(b.h, 4), "conf": b.conf, "label": b.label}
+                    for b in m.boxes
+                ],
+                w, h, WORKER_ID,
+                label=m.label, rule_id=m.rule_id, severity=m.severity,
+            )
+            self._evq.put(("detections", payload))
+            if first_emitted_id is None:
+                first_emitted_id = payload["id"]
+        # one clip per frame-worth-of-matches, linked to the first emitted alert
+        if first_emitted_id is not None:
+            self.recorder.trigger(annotated, first_emitted_id)
 
     def _push_state(self, state: str, detail: str | None = None) -> None:
         self.state = state
@@ -268,7 +285,7 @@ class CameraWorker:
             cv2.rectangle(img, (x1, y1), (x2, y2), (0, 255, 0), 2)
             cv2.putText(
                 img,
-                f"person {b.conf:.2f}",
+                f"{b.label} {b.conf:.2f}",
                 (x1, max(0, y1 - 6)),
                 cv2.FONT_HERSHEY_SIMPLEX,
                 0.5,
