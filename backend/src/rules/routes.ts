@@ -3,6 +3,7 @@ import { and, desc, eq, getTableColumns } from "drizzle-orm";
 import { db } from "../db";
 import { zones, rules, cameras } from "../db/schema";
 import { requireAuth } from "../auth/middleware";
+import { publishCommand } from "../realtime/channels";
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -49,6 +50,7 @@ zoneRoutes.post("/", async (c) => {
   if (!name) return c.json({ error: "name required" }, 400);
   if (!validPolygon(b?.polygon)) return c.json({ error: "polygon must be >=3 points in [0,1]" }, 400);
   const [zone] = await db.insert(zones).values({ cameraId: cam.id, name, polygon: b.polygon }).returning();
+  await pushRulesIfRunning(cam, c.get("userId"));
   return c.json(zone, 201);
 });
 
@@ -70,6 +72,7 @@ zoneRoutes.patch("/:zoneId", async (c) => {
     .where(and(eq(zones.id, c.req.param("zoneId")), eq(zones.cameraId, cam.id)))
     .returning();
   if (!updated) return c.json({ error: "not found" }, 404);
+  await pushRulesIfRunning(cam, c.get("userId"));
   return c.json(updated);
 });
 
@@ -78,6 +81,7 @@ zoneRoutes.delete("/:zoneId", async (c) => {
   if (!cam) return c.json({ error: "not found" }, 404);
   if (!UUID_RE.test(c.req.param("zoneId"))) return c.json({ error: "not found" }, 404);
   await db.delete(zones).where(and(eq(zones.id, c.req.param("zoneId")), eq(zones.cameraId, cam.id)));
+  await pushRulesIfRunning(cam, c.get("userId"));
   return c.body(null, 204);
 });
 
@@ -145,6 +149,7 @@ ruleRoutes.post("/", async (c) => {
     severity: b.severity ?? "low",
     enabled: typeof b.enabled === "boolean" ? b.enabled : true,
   }).returning();
+  await pushRulesIfRunning(cam, c.get("userId"));
   return c.json(rule, 201);
 });
 
@@ -169,6 +174,7 @@ ruleRoutes.patch("/:ruleId", async (c) => {
   if ("zoneId" in patch && !patch.zoneId) patch.zoneId = null;
   const [updated] = await db.update(rules).set(patch).where(and(eq(rules.id, c.req.param("ruleId")), eq(rules.cameraId, cam.id))).returning();
   if (!updated) return c.json({ error: "not found" }, 404);
+  await pushRulesIfRunning(cam, c.get("userId"));
   return c.json(updated);
 });
 
@@ -177,6 +183,7 @@ ruleRoutes.delete("/:ruleId", async (c) => {
   if (!cam) return c.json({ error: "not found" }, 404);
   if (!UUID_RE.test(c.req.param("ruleId"))) return c.json({ error: "not found" }, 404);
   await db.delete(rules).where(and(eq(rules.id, c.req.param("ruleId")), eq(rules.cameraId, cam.id)));
+  await pushRulesIfRunning(cam, c.get("userId"));
   return c.body(null, 204);
 });
 
@@ -207,4 +214,18 @@ export async function resolveRules(cameraId: string): Promise<ResolvedRule[]> {
     severity: r.severity,
     enabled: r.enabled,
   }));
+}
+
+// After a zone/rule change, if the camera is currently running, push the fresh
+// rule set to the worker so it takes effect without a restart.
+export async function pushRulesIfRunning(cam: { id: string; status: string }, userId: string) {
+  if (cam.status !== "connecting" && cam.status !== "live") return;
+  const resolved = await resolveRules(cam.id);
+  await publishCommand({
+    type: "rules_update",
+    camera_id: cam.id,
+    rules: resolved,
+    requested_by: userId,
+    ts: new Date().toISOString(),
+  });
 }

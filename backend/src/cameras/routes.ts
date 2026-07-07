@@ -6,6 +6,7 @@ import { requireAuth } from "../auth/middleware";
 import { publishCommand } from "../realtime/channels";
 import { invalidateOwner } from "../realtime/connections";
 import { requestAnswer } from "../realtime/signaling";
+import { resolveRules } from "../rules/routes";
 
 const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -125,10 +126,12 @@ cameraRoutes.post("/:id/start", async (c) => {
     .update(cameras)
     .set({ status: "connecting", updatedAt: new Date() })
     .where(eq(cameras.id, cam.id));
+  const resolved = await resolveRules(cam.id);
   await publishCommand({
     type: "start",
     camera_id: cam.id,
     rtsp_url: cam.rtspUrl,
+    rules: resolved,
     requested_by: c.get("userId"),
     ts: new Date().toISOString(),
   });

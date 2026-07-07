@@ -2,6 +2,7 @@ import { test, expect, beforeAll } from "bun:test";
 import { sql } from "drizzle-orm";
 import { app } from "../src/app";
 import { db } from "../src/db";
+import { resolveRules } from "../src/rules/routes";
 
 let dbUp = false;
 beforeAll(async () => {
@@ -81,4 +82,18 @@ test("a rule cannot reference another camera's zone (POST or PATCH)", async () =
   const rule = await (await a.authed(`/cameras/${a.cam.id}/rules`, json({ name: "ok", classes: ["person"] }))).json();
   const patch = await a.authed(`/cameras/${a.cam.id}/rules/${rule.id}`, { method: "PATCH", body: JSON.stringify({ zoneId: bZone.id }) });
   expect(patch.status).toBe(400);
+});
+
+test("resolveRules inlines the zone polygon and only returns enabled rules", async () => {
+  if (!dbUp) return;
+  const a = await user();
+  const poly = [{ x: 0.1, y: 0.1 }, { x: 0.9, y: 0.1 }, { x: 0.5, y: 0.9 }];
+  const zone = await (await a.authed(`/cameras/${a.cam.id}/zones`, json({ name: "Z", polygon: poly }))).json();
+  await a.authed(`/cameras/${a.cam.id}/rules`, json({ name: "on", classes: ["person"], zoneId: zone.id, severity: "high" }));
+  await a.authed(`/cameras/${a.cam.id}/rules`, json({ name: "off", classes: ["car"], enabled: false }));
+  const resolved = await resolveRules(a.cam.id);
+  expect(resolved.length).toBe(1);
+  expect(resolved[0].zone).toEqual(poly);
+  expect(resolved[0].classes).toEqual(["person"]);
+  expect(resolved[0].severity).toBe("high");
 });

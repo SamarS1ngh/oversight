@@ -15,10 +15,12 @@ export type CameraCommand =
       type: "start";
       camera_id: string;
       rtsp_url: string;
+      rules: unknown[];
       requested_by: string;
       ts: string;
     }
-  | { type: "stop"; camera_id: string; requested_by: string; ts: string };
+  | { type: "stop"; camera_id: string; requested_by: string; ts: string }
+  | { type: "rules_update"; camera_id: string; rules: unknown[]; requested_by: string; ts: string };
 
 export async function publishCommand(cmd: CameraCommand): Promise<void> {
   await redisPub.publish(CHANNELS.commands, JSON.stringify(cmd));
