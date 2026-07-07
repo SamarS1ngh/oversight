@@ -1,7 +1,7 @@
 import { Hono } from "hono";
-import { and, desc, eq } from "drizzle-orm";
+import { and, desc, eq, getTableColumns } from "drizzle-orm";
 import { db } from "../db";
-import { zones, cameras } from "../db/schema";
+import { zones, rules, cameras } from "../db/schema";
 import { requireAuth } from "../auth/middleware";
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -80,3 +80,113 @@ zoneRoutes.delete("/:zoneId", async (c) => {
   await db.delete(zones).where(and(eq(zones.id, c.req.param("zoneId")), eq(zones.cameraId, cam.id)));
   return c.body(null, 204);
 });
+
+export const KNOWN_CLASSES = [
+  "person", "bicycle", "car", "motorcycle", "bus", "truck",
+  "cat", "dog", "backpack", "handbag", "suitcase",
+];
+const SEVERITIES = ["low", "medium", "high"];
+const HHMM = /^([01]\d|2[0-3]):[0-5]\d$/;
+
+function validateRuleBody(b: any): string | null {
+  if (!b?.name?.trim()) return "name required";
+  if (!Array.isArray(b.classes) || b.classes.length < 1) return "classes must be a non-empty array";
+  if (!b.classes.every((cl: any) => KNOWN_CLASSES.includes(cl))) return "unknown class";
+  if (b.severity !== undefined && !SEVERITIES.includes(b.severity)) return "severity must be low|medium|high";
+  for (const k of ["scheduleStart", "scheduleEnd"]) {
+    if (b[k] !== undefined && b[k] !== null && !HHMM.test(b[k])) return `${k} must be HH:MM`;
+  }
+  if (b.minConfidence !== undefined && (typeof b.minConfidence !== "number" || b.minConfidence < 0 || b.minConfidence > 1)) return "minConfidence must be 0..1";
+  return null;
+}
+
+// mounted at /cameras/:cameraId/rules
+export const ruleRoutes = new Hono<{}, {}, "/cameras/:cameraId/rules">();
+ruleRoutes.use("*", requireAuth);
+
+ruleRoutes.get("/", async (c) => {
+  const cam = await ownedCamera(c.get("userId"), c.req.param("cameraId"));
+  if (!cam) return c.json({ error: "not found" }, 404);
+  const rows = await db.select().from(rules).where(eq(rules.cameraId, cam.id)).orderBy(desc(rules.createdAt));
+  return c.json(rows);
+});
+
+ruleRoutes.post("/", async (c) => {
+  const cam = await ownedCamera(c.get("userId"), c.req.param("cameraId"));
+  if (!cam) return c.json({ error: "not found" }, 404);
+  const b = await c.req.json().catch(() => null);
+  const err = validateRuleBody(b);
+  if (err) return c.json({ error: err }, 400);
+  // if a zone is given it must belong to this camera
+  if (b.zoneId) {
+    const [z] = await db.select({ id: zones.id }).from(zones).where(and(eq(zones.id, b.zoneId), eq(zones.cameraId, cam.id))).limit(1);
+    if (!z) return c.json({ error: "zone not found for this camera" }, 400);
+  }
+  const [rule] = await db.insert(rules).values({
+    cameraId: cam.id,
+    name: b.name.trim(),
+    zoneId: b.zoneId ?? null,
+    classes: b.classes,
+    scheduleStart: b.scheduleStart ?? null,
+    scheduleEnd: b.scheduleEnd ?? null,
+    minConfidence: typeof b.minConfidence === "number" ? b.minConfidence : 0.4,
+    severity: b.severity ?? "low",
+    enabled: typeof b.enabled === "boolean" ? b.enabled : true,
+  }).returning();
+  return c.json(rule, 201);
+});
+
+ruleRoutes.patch("/:ruleId", async (c) => {
+  const cam = await ownedCamera(c.get("userId"), c.req.param("cameraId"));
+  if (!cam) return c.json({ error: "not found" }, 404);
+  if (!UUID_RE.test(c.req.param("ruleId"))) return c.json({ error: "not found" }, 404);
+  const b = await c.req.json().catch(() => ({}));
+  // validate only provided fields by merging onto a minimal valid base
+  const merged = { name: b.name ?? "x", classes: b.classes ?? ["person"], severity: b.severity, scheduleStart: b.scheduleStart, scheduleEnd: b.scheduleEnd, minConfidence: b.minConfidence };
+  const err = validateRuleBody(merged);
+  if (err) return c.json({ error: err }, 400);
+  const patch: Record<string, unknown> = { updatedAt: new Date() };
+  for (const k of ["name", "classes", "zoneId", "scheduleStart", "scheduleEnd", "minConfidence", "severity", "enabled"]) {
+    if (b[k] !== undefined) patch[k === "name" ? "name" : k] = k === "name" ? String(b[k]).trim() : b[k];
+  }
+  const [updated] = await db.update(rules).set(patch).where(and(eq(rules.id, c.req.param("ruleId")), eq(rules.cameraId, cam.id))).returning();
+  if (!updated) return c.json({ error: "not found" }, 404);
+  return c.json(updated);
+});
+
+ruleRoutes.delete("/:ruleId", async (c) => {
+  const cam = await ownedCamera(c.get("userId"), c.req.param("cameraId"));
+  if (!cam) return c.json({ error: "not found" }, 404);
+  if (!UUID_RE.test(c.req.param("ruleId"))) return c.json({ error: "not found" }, 404);
+  await db.delete(rules).where(and(eq(rules.id, c.req.param("ruleId")), eq(rules.cameraId, cam.id)));
+  return c.body(null, 204);
+});
+
+// Resolve a camera's ENABLED rules into self-contained payloads (zone polygon
+// inlined) for delivery to the worker.
+export type ResolvedRule = {
+  id: string;
+  classes: string[];
+  zone: { x: number; y: number }[] | null;
+  schedule: [string | null, string | null];
+  min_confidence: number;
+  severity: string;
+  enabled: boolean;
+};
+
+export async function resolveRules(cameraId: string): Promise<ResolvedRule[]> {
+  const rows = await db
+    .select({ ...getTableColumns(rules), zonePolygon: zones.polygon })
+    .from(rules)
+    .leftJoin(zones, eq(rules.zoneId, zones.id))
+    .where(and(eq(rules.cameraId, cameraId), eq(rules.enabled, true)));
+  return rows.map((r) => ({
+    id: r.id,
+    classes: r.classes as string[],
+    zone: (r.zonePolygon as { x: number; y: number }[] | null) ?? null,
+    schedule: [r.scheduleStart, r.scheduleEnd],
+    min_confidence: r.minConfidence,
+    severity: r.severity,
+    enabled: r.enabled,
+  }));
+}

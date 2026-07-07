@@ -44,3 +44,26 @@ test("reject a polygon with fewer than 3 points", async () => {
   const r = await a.authed(`/cameras/${a.cam.id}/zones`, json({ name: "bad", polygon: [{ x: 0.1, y: 0.1 }] }));
   expect(r.status).toBe(400);
 });
+
+test("create a rule with a zone + validate inputs", async () => {
+  if (!dbUp) return;
+  const a = await user();
+  const zone = await (await a.authed(`/cameras/${a.cam.id}/zones`, json({ name: "Z", polygon: [{ x: 0.1, y: 0.1 }, { x: 0.9, y: 0.1 }, { x: 0.5, y: 0.9 }] }))).json();
+  const ok = await a.authed(`/cameras/${a.cam.id}/rules`, json({ name: "night", classes: ["person", "car"], zoneId: zone.id, scheduleStart: "22:00", scheduleEnd: "06:00", severity: "high" }));
+  expect(ok.status).toBe(201);
+  const rule = await ok.json();
+  expect(rule.severity).toBe("high");
+  const list = await (await a.authed(`/cameras/${a.cam.id}/rules`)).json();
+  expect(list.map((r: any) => r.id)).toContain(rule.id);
+});
+
+test("reject unknown class, bad severity, bad schedule", async () => {
+  if (!dbUp) return;
+  const a = await user();
+  const badClass = await a.authed(`/cameras/${a.cam.id}/rules`, json({ name: "x", classes: ["dragon"] }));
+  expect(badClass.status).toBe(400);
+  const badSev = await a.authed(`/cameras/${a.cam.id}/rules`, json({ name: "x", classes: ["person"], severity: "urgent" }));
+  expect(badSev.status).toBe(400);
+  const badTime = await a.authed(`/cameras/${a.cam.id}/rules`, json({ name: "x", classes: ["person"], scheduleStart: "9am" }));
+  expect(badTime.status).toBe(400);
+});
