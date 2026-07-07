@@ -27,14 +27,14 @@ class DedupRateLimiter:
         self.max_per_min = max_per_min
         self._cams: dict[str, _CamState] = {}
 
-    def should_emit(self, camera_id: str, count: int, now_ms: float) -> bool:
+    def should_emit(self, key: str, count: int, now_ms: float) -> bool:
         if count <= 0:
             return False
 
-        st = self._cams.get(camera_id)
+        st = self._cams.get(key)
         if st is None:
             st = _CamState()
-            self._cams[camera_id] = st
+            self._cams[key] = st
 
         # roll the rate-limit window
         if now_ms - st.window_start_ms >= 60_000:
@@ -56,4 +56,5 @@ class DedupRateLimiter:
         return True
 
     def reset(self, camera_id: str) -> None:
-        self._cams.pop(camera_id, None)
+        for k in [k for k in self._cams if k == camera_id or k.startswith(camera_id + ":")]:
+            self._cams.pop(k, None)

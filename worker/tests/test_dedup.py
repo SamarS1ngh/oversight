@@ -56,6 +56,20 @@ class TestDedupRateLimiter(unittest.TestCase):
         lim.reset("c")
         self.assertTrue(lim.should_emit("c", 1, 1100))
 
+    def test_composite_keys_are_independent(self):
+        lim = DedupRateLimiter(3000, 30)
+        self.assertTrue(lim.should_emit("cam:r1", 1, 1000))
+        self.assertTrue(lim.should_emit("cam:r2", 1, 1000))  # different rule, not suppressed
+        self.assertFalse(lim.should_emit("cam:r1", 1, 1100))  # same rule suppressed
+
+    def test_reset_clears_all_rule_keys_for_a_camera(self):
+        lim = DedupRateLimiter(3000, 30)
+        self.assertTrue(lim.should_emit("cam:r1", 1, 1000))
+        self.assertTrue(lim.should_emit("cam:r2", 1, 1000))
+        lim.reset("cam")
+        self.assertTrue(lim.should_emit("cam:r1", 1, 1100))  # reset cleared it
+        self.assertTrue(lim.should_emit("cam:r2", 1, 1100))
+
 
 if __name__ == "__main__":
     unittest.main()
