@@ -30,3 +30,13 @@ POST_ROLL_S = _int("POST_ROLL_S", 10)
 MAX_CLIP_LEN_S = _int("MAX_CLIP_LEN_S", 120)
 RECORDINGS_DIR = os.environ.get("RECORDINGS_DIR", "/recordings")
 STORAGE_BACKEND = os.environ.get("STORAGE_BACKEND", "local")
+
+# rules engine (M2a)
+import os as _os
+MODEL_CLASSES = [
+    s.strip() for s in _os.environ.get(
+        "MODEL_CLASSES",
+        "person,bicycle,car,motorcycle,bus,truck,cat,dog,backpack,handbag,suitcase",
+    ).split(",") if s.strip()
+]
+TZ = _os.environ.get("TZ", "UTC")
