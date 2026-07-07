@@ -52,7 +52,7 @@ cp .env.example .env
 ## Configuration
 
 Selected env vars (see [`.env.example`](.env.example) for the full list) — the
-recording knobs added for the clip/thumbnail feature:
+recording knobs added for the clip/thumbnail feature, plus rules-engine settings:
 
 | Variable | Default | Used by | Purpose |
 |---|---|---|---|
@@ -63,6 +63,10 @@ recording knobs added for the clip/thumbnail feature:
 | `STORAGE_BACKEND` | `local` | worker | clip storage backend |
 | `RETENTION_DAYS` | `7` | backend | delete clips older than this |
 | `MAX_STORAGE_GB` | `10` | backend | evict oldest clips past this total |
+| `MODEL_CLASSES` | `person,bicycle,car,motorcycle,bus,truck,cat,dog,backpack,handbag,suitcase` | worker | comma-separated YOLO detection classes |
+| `TZ` | `UTC` | worker | timezone for schedule windows in alert rules |
+
+**Rules & Zones:** cameras now support drawing polygonal zones and creating alert rules (class-based, zone-bound, scheduled, severity-tiered).
 
 ---
 
