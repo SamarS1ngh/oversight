@@ -15,7 +15,7 @@ class TestEvents(unittest.TestCase):
             "worker-1",
             ts="2026-01-01T00:00:00Z",
         )
-        self.assertEqual(e["type"], "person_detected")
+        self.assertEqual(e["type"], "detection")
         self.assertEqual(e["camera_id"], "cam1")
         self.assertEqual(e["count"], 2)
         self.assertEqual(e["confidence"], 0.9123)  # rounded to 4dp
@@ -47,6 +47,13 @@ class TestEvents(unittest.TestCase):
     def test_state_event_without_detail_omits_key(self):
         e = state_event("cam1", "live")
         self.assertNotIn("detail", e)
+
+    def test_detection_event_carries_label_rule_severity(self):
+        e = detection_event("cam", 0.9, 1, [{"x": 0, "y": 0, "w": 0.1, "h": 0.1, "conf": 0.9, "label": "car"}], 1280, 720, "w1", label="car", rule_id="r1", severity="high")
+        self.assertEqual(e["type"], "detection")
+        self.assertEqual(e["label"], "car")
+        self.assertEqual(e["rule_id"], "r1")
+        self.assertEqual(e["severity"], "high")
 
 
 if __name__ == "__main__":

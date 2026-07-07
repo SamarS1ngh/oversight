@@ -14,14 +14,20 @@ def detection_event(
     frame_w: int,
     frame_h: int,
     worker_id: str,
+    label: str | None = None,
+    rule_id: str | None = None,
+    severity: str = "low",
     ts: str | None = None,
 ) -> dict:
     """Detection event — matches §2 of docs/EVENT_FORMAT.md."""
     return {
         "id": str(uuid.uuid4()),
-        "type": "person_detected",
+        "type": "detection",
         "camera_id": camera_id,
         "ts": ts or now_iso(),
+        "label": label,
+        "rule_id": rule_id,
+        "severity": severity,
         "confidence": round(float(confidence), 4),
         "count": int(count),
         "bboxes": bboxes,
