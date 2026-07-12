@@ -270,7 +270,7 @@ export async function resolveRules(cameraId: string): Promise<ResolvedRule[]> {
     .from(rules)
     .leftJoin(zones, eq(rules.zoneId, zones.id))
     .where(and(eq(rules.cameraId, cameraId), eq(rules.enabled, true)));
-  return rows.map((r) => ({
+  return rows.map((r): ResolvedRule => ({
     id: r.id,
     type: r.type,
     classes: r.classes as string[],
