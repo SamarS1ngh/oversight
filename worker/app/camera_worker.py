@@ -22,6 +22,8 @@ from .config import (
 from .events import detection_event, stats_event, state_event
 from .recorder import Recorder
 from .rules import evaluate as evaluate_rules
+from .tracking_rules import evaluate_tracking, bottom_center
+from .tracker import ByteTrackTracker
 
 log = logging.getLogger("camera")
 
@@ -86,6 +88,9 @@ class CameraWorker:
             worker_id=WORKER_ID,
             backend=STORAGE_BACKEND,
         )
+        self.tracker = ByteTrackTracker()
+        self._dwell_state: dict = {}
+        self._last_center: dict = {}
 
     # ---------- lifecycle ----------
     def start(self) -> None:
@@ -136,6 +141,8 @@ class CameraWorker:
 
     def set_rules(self, rules) -> None:
         self.rules = rules or []
+        self._dwell_state = {}
+        self._last_center = {}
 
     def _now_hhmm(self) -> str:
         from datetime import datetime
@@ -216,12 +223,15 @@ class CameraWorker:
                         last_fps_t = now
 
                     boxes = []
+                    tracks = []
                     if frame_count % DETECT_EVERY_N == 0:
                         boxes = self.detector.detect_objects(img)
+                        if boxes:
+                            tracks = self.tracker.update(boxes, img.shape[1], img.shape[0])
 
                     annotated = self._annotate(img, boxes)
                     if boxes:
-                        self._emit_matches(img, boxes, now, annotated)
+                        self._emit_matches(img, boxes, tracks, now, annotated)
 
                     self.latest_frame = VideoFrame.from_ndarray(annotated, format="bgr24")
 
@@ -241,33 +251,61 @@ class CameraWorker:
             except Exception:
                 pass
 
-    def _emit_matches(self, img, boxes, now_ms: float, annotated) -> None:
-        matches = evaluate_rules(boxes, self.rules, self._now_hhmm(), CONF_THRESHOLD)
-        if not matches:
+    def _emit_one(self, m, w, h) -> str:
+        payload = detection_event(
+            self.camera_id, m.confidence, m.count,
+            [
+                {"x": round(b.x, 4), "y": round(b.y, 4), "w": round(b.w, 4),
+                 "h": round(b.h, 4), "conf": b.conf, "label": b.label}
+                for b in m.boxes
+            ],
+            w, h, WORKER_ID,
+            label=m.label, rule_id=m.rule_id, severity=m.severity,
+        )
+        self._evq.put(("detections", payload))
+        return payload["id"]
+
+    def _emit_matches(self, img, boxes, tracks, now_ms: float, annotated) -> None:
+        now_hhmm = self._now_hhmm()
+        presence_rules = [r for r in self.rules if r.get("type", "presence") == "presence"]
+        tracking_rules = [r for r in self.rules if r.get("type", "presence") in ("tripwire", "dwell")]
+
+        # implicit "any person, low" default only when the camera has NO rules at all
+        if not self.rules:
+            presence_matches = evaluate_rules(boxes, [], now_hhmm, CONF_THRESHOLD)
+        elif presence_rules:
+            presence_matches = evaluate_rules(boxes, presence_rules, now_hhmm, CONF_THRESHOLD)
+        else:
+            presence_matches = []
+
+        tracking_matches = (
+            evaluate_tracking(tracks, tracking_rules, self._dwell_state, self._last_center,
+                              now_ms / 1000.0, now_hhmm, CONF_THRESHOLD)
+            if tracking_rules else []
+        )
+        # remember this frame's centers for the next frame's crossing test
+        if tracks:
+            self._last_center = {t.id: bottom_center(t) for t in tracks}
+
+        if not presence_matches and not tracking_matches:
             return
         self._det_times.append(now_ms)
         h, w = img.shape[:2]
         first_emitted_id = None
-        for m in matches:
+
+        # presence: keep the M2a per-(camera,rule) count dedup
+        for m in presence_matches:
             key = f"{self.camera_id}:{m.rule_id or ''}"
             if not self.limiter.should_emit(key, m.count, now_ms):
                 continue
-            payload = detection_event(
-                self.camera_id,
-                m.confidence,
-                m.count,
-                [
-                    {"x": round(b.x, 4), "y": round(b.y, 4), "w": round(b.w, 4),
-                     "h": round(b.h, 4), "conf": b.conf, "label": b.label}
-                    for b in m.boxes
-                ],
-                w, h, WORKER_ID,
-                label=m.label, rule_id=m.rule_id, severity=m.severity,
-            )
-            self._evq.put(("detections", payload))
-            if first_emitted_id is None:
-                first_emitted_id = payload["id"]
-        # one clip per frame-worth-of-matches, linked to the first emitted alert
+            eid = self._emit_one(m, w, h)
+            first_emitted_id = first_emitted_id or eid
+
+        # tracking: bypass the count dedup (episodic, self-limiting)
+        for m in tracking_matches:
+            eid = self._emit_one(m, w, h)
+            first_emitted_id = first_emitted_id or eid
+
         if first_emitted_id is not None:
             self.recorder.trigger(annotated, first_emitted_id)
 

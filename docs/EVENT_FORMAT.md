@@ -38,6 +38,13 @@ subscribes and acts on it. Channel: `camera:commands`.
 }
 ```
 
+Each rule in `rules` (on both `start` and `rules_update`) may also carry:
+- `type`: `"presence"` (default when omitted) | `"tripwire"` | `"dwell"`.
+- `direction`: `"in"` | `"out"` | `"both"` — tripwire only, which way a crossing counts (`"both"` when omitted).
+- `dwell_seconds`: dwell only — seconds a tracked object must stay continuously inside `zone` before it fires.
+
+For a `tripwire` rule, `zone` is a **2-point line** (`[{"x","y"}, {"x","y"}]`) instead of the polygon used by `presence`/`dwell` rules.
+
 ### Rules update command
 
 ```json
