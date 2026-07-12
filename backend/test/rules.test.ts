@@ -47,6 +47,23 @@ test("reject a polygon with fewer than 3 points", async () => {
   expect(r.status).toBe(400);
 });
 
+test("create a line zone (exactly 2 points)", async () => {
+  if (!dbUp) return;
+  const a = await user();
+  const ok = await a.authed(`/cameras/${a.cam.id}/zones`, json({ name: "gate", kind: "line", polygon: [{ x: 0.2, y: 0.5 }, { x: 0.8, y: 0.5 }] }));
+  expect(ok.status).toBe(201);
+  expect((await ok.json()).kind).toBe("line");
+});
+
+test("reject a line zone without exactly 2 points", async () => {
+  if (!dbUp) return;
+  const a = await user();
+  const bad = await a.authed(`/cameras/${a.cam.id}/zones`, json({ name: "bad", kind: "line", polygon: [{ x: 0.2, y: 0.5 }] }));
+  expect(bad.status).toBe(400);
+  const bad3 = await a.authed(`/cameras/${a.cam.id}/zones`, json({ name: "bad3", kind: "line", polygon: [{ x: 0.1, y: 0.1 }, { x: 0.5, y: 0.5 }, { x: 0.9, y: 0.9 }] }));
+  expect(bad3.status).toBe(400);
+});
+
 test("create a rule with a zone + validate inputs", async () => {
   if (!dbUp) return;
   const a = await user();

@@ -17,16 +17,22 @@ export async function ownedCamera(userId: string, cameraId: string) {
   return cam ?? null;
 }
 
-function validPolygon(p: unknown): p is { x: number; y: number }[] {
+function pointsInRange(p: unknown): p is { x: number; y: number }[] {
   return (
     Array.isArray(p) &&
-    p.length >= 3 &&
     p.every(
       (pt: any) =>
         pt && typeof pt.x === "number" && typeof pt.y === "number" &&
         pt.x >= 0 && pt.x <= 1 && pt.y >= 0 && pt.y <= 1,
     )
   );
+}
+// A polygon needs >=3 points; a line needs exactly 2.
+function validGeometry(kind: string, p: unknown): string | null {
+  if (!pointsInRange(p)) return "points must be in [0,1]";
+  const pts = p as { x: number; y: number }[];
+  if (kind === "line") return pts.length === 2 ? null : "a line needs exactly 2 points";
+  return pts.length >= 3 ? null : "a polygon needs >=3 points";
 }
 
 // mounted at /cameras/:cameraId/zones. The BasePath type param lets Hono type
@@ -48,8 +54,10 @@ zoneRoutes.post("/", async (c) => {
   const b = await c.req.json().catch(() => null);
   const name = b?.name?.trim();
   if (!name) return c.json({ error: "name required" }, 400);
-  if (!validPolygon(b?.polygon)) return c.json({ error: "polygon must be >=3 points in [0,1]" }, 400);
-  const [zone] = await db.insert(zones).values({ cameraId: cam.id, name, polygon: b.polygon }).returning();
+  const kind = b?.kind === "line" ? "line" : "polygon";
+  const gErr = validGeometry(kind, b?.polygon);
+  if (gErr) return c.json({ error: gErr }, 400);
+  const [zone] = await db.insert(zones).values({ cameraId: cam.id, name, kind, polygon: b.polygon }).returning();
   await pushRulesIfRunning(cam, c.get("userId"));
   return c.json(zone, 201);
 });
@@ -61,8 +69,14 @@ zoneRoutes.patch("/:zoneId", async (c) => {
   const b = await c.req.json().catch(() => ({}));
   const patch: Record<string, unknown> = {};
   if (typeof b.name === "string") patch.name = b.name.trim();
+  if (b.kind === "line" || b.kind === "polygon") patch.kind = b.kind;
   if (b.polygon !== undefined) {
-    if (!validPolygon(b.polygon)) return c.json({ error: "polygon must be >=3 points in [0,1]" }, 400);
+    // validate against the new kind if provided, else the existing row's kind
+    const [existing] = await db.select({ kind: zones.kind }).from(zones).where(and(eq(zones.id, c.req.param("zoneId")), eq(zones.cameraId, cam.id))).limit(1);
+    if (!existing) return c.json({ error: "not found" }, 404);
+    const kind = (patch.kind as string) ?? existing.kind;
+    const gErr = validGeometry(kind, b.polygon);
+    if (gErr) return c.json({ error: gErr }, 400);
     patch.polygon = b.polygon;
   }
   if (Object.keys(patch).length === 0) return c.json({ error: "nothing to update" }, 400);
