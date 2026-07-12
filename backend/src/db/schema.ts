@@ -112,6 +112,7 @@ export const zones = pgTable(
       .references(() => cameras.id, { onDelete: "cascade" }),
     name: text("name").notNull(),
     polygon: jsonb("polygon").notNull(), // [{ x:0.1, y:0.2 }, ...] normalized, >=3 pts
+    kind: text("kind").notNull().default("polygon"), // 'polygon' | 'line'
     createdAt: timestamp("created_at", { withTimezone: true })
       .notNull()
       .defaultNow(),
@@ -130,6 +131,9 @@ export const rules = pgTable(
       .references(() => cameras.id, { onDelete: "cascade" }),
     name: text("name").notNull(),
     zoneId: uuid("zone_id").references(() => zones.id, { onDelete: "set null" }),
+    type: text("type").notNull().default("presence"), // 'presence' | 'tripwire' | 'dwell'
+    direction: text("direction"), // 'in' | 'out' | 'both' (tripwire only)
+    dwellSeconds: integer("dwell_seconds"), // dwell only
     classes: jsonb("classes").notNull(), // ["person","car"]
     scheduleStart: text("schedule_start"), // "HH:MM" local, nullable
     scheduleEnd: text("schedule_end"),
