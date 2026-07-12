@@ -388,6 +388,7 @@ input[type="checkbox"] {
 
 /* ---- zone editor ---- */
 .zone-list { margin-top: 8px; max-height: 120px; overflow-y: auto; }
+.mode-toggle { display: flex; gap: 6px; margin-bottom: 6px; }
 
 /* ---- rules panel ---- */
 .class-chips { display: flex; flex-wrap: wrap; gap: 4px; margin: 6px 0; }
