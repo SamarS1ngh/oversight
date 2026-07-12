@@ -78,6 +78,13 @@ zoneRoutes.patch("/:zoneId", async (c) => {
     const gErr = validGeometry(kind, b.polygon);
     if (gErr) return c.json({ error: gErr }, 400);
     patch.polygon = b.polygon;
+  } else if (patch.kind !== undefined) {
+    // changing kind without new points: the existing points must fit the new kind
+    // (a polygon's >=3 points can't be relabeled a line, which needs exactly 2)
+    const [existing] = await db.select({ polygon: zones.polygon }).from(zones).where(and(eq(zones.id, c.req.param("zoneId")), eq(zones.cameraId, cam.id))).limit(1);
+    if (!existing) return c.json({ error: "not found" }, 404);
+    const gErr = validGeometry(patch.kind as string, existing.polygon);
+    if (gErr) return c.json({ error: `existing points do not fit kind '${patch.kind}': ${gErr}` }, 400);
   }
   if (Object.keys(patch).length === 0) return c.json({ error: "nothing to update" }, 400);
   const [updated] = await db

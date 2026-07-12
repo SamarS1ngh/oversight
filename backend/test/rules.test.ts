@@ -64,6 +64,16 @@ test("reject a line zone without exactly 2 points", async () => {
   expect(bad3.status).toBe(400);
 });
 
+test("PATCH kind to line without new points is rejected when existing points don't fit", async () => {
+  if (!dbUp) return;
+  const a = await user();
+  // a 3-point polygon zone
+  const poly = await (await a.authed(`/cameras/${a.cam.id}/zones`, json({ name: "P", polygon: [{ x: 0.1, y: 0.1 }, { x: 0.9, y: 0.1 }, { x: 0.5, y: 0.9 }] }))).json();
+  // relabel it a line without giving 2 points -> 400 (would leave a "line" with 3 points)
+  const bad = await a.authed(`/cameras/${a.cam.id}/zones/${poly.id}`, { method: "PATCH", body: JSON.stringify({ kind: "line" }) });
+  expect(bad.status).toBe(400);
+});
+
 test("create a rule with a zone + validate inputs", async () => {
   if (!dbUp) return;
   const a = await user();
