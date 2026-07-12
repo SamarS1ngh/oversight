@@ -88,8 +88,9 @@ def evaluate_tracking(tracks, rules, state, last_center, now_s, now_hhmm, defaul
                     if not st.fired and now_s - st.entered_at >= dwell:
                         st.fired = True
                         matches.append(Match(rid, sev, t.label, [t], 1, t.conf))
-            # a track no longer inside this rule's zone -> reset its dwell episode
+            # a track no longer inside this rule's zone -> drop its state so a later
+            # re-entry starts a FRESH episode timed from the re-entry (dwell = time
+            # spent CONTINUOUSLY inside). Also bounds `state` (no leak on churn).
             for key in [k for k in state if k[0] == rid and k[1] not in present]:
-                state[key].entered_at = now_s  # timer restarts from exit time
-                state[key].fired = False  # reset fired flag for fresh episode
+                del state[key]
     return matches

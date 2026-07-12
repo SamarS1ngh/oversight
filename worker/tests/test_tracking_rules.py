@@ -78,10 +78,14 @@ class TestEvaluateTracking(unittest.TestCase):
         outside = [T(1, 0.8, 0.8, 0.05, 0.05)]     # outside
         evaluate_tracking(inside, [dr], state, last, 0.0, "12:00", 0.4)
         evaluate_tracking(inside, [dr], state, last, 5.0, "12:00", 0.4)  # fires
-        evaluate_tracking(outside, [dr], state, last, 6.0, "12:00", 0.4)  # leaves -> reset
-        # re-enters, must dwell a fresh 5s from t=6, so t=7 no fire, t=11 fires again
-        self.assertEqual(evaluate_tracking(inside, [dr], state, last, 7.0, "12:00", 0.4), [])
-        self.assertEqual(len(evaluate_tracking(inside, [dr], state, last, 11.0, "12:00", 0.4)), 1)
+        evaluate_tracking(outside, [dr], state, last, 6.0, "12:00", 0.4)  # leaves -> episode dropped
+        # re-enters at t=7 -> a FRESH episode timed from RE-ENTRY (dwell = continuous
+        # time inside), so it needs +5s from t=7.
+        self.assertEqual(evaluate_tracking(inside, [dr], state, last, 7.0, "12:00", 0.4), [])   # just re-entered
+        # 4s into the new episode -> no fire. (Under the old count-from-exit bug this
+        # would already fire, since 11-6=5; the fix times from re-entry: 11-7=4.)
+        self.assertEqual(evaluate_tracking(inside, [dr], state, last, 11.0, "12:00", 0.4), [])
+        self.assertEqual(len(evaluate_tracking(inside, [dr], state, last, 12.0, "12:00", 0.4)), 1)  # 5s in -> fires
 
     def test_class_and_conf_and_schedule_filter(self):
         state, last = {}, {1: (0.4, 0.6)}
