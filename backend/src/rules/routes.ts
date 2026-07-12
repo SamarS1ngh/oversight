@@ -281,7 +281,10 @@ export async function resolveRules(cameraId: string): Promise<ResolvedRule[]> {
     min_confidence: r.minConfidence,
     severity: r.severity,
     enabled: r.enabled,
-  }));
+  }))
+  // Drop orphaned tracking rules: a tripwire/dwell whose zone was deleted resolves
+  // with zone=null and can never match — don't push a dead (and worker-unsafe) rule.
+  .filter((r) => !((r.type === "tripwire" || r.type === "dwell") && !r.zone));
 }
 
 // After a zone/rule change, if the camera is currently running, push the fresh

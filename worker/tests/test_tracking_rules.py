@@ -87,6 +87,16 @@ class TestEvaluateTracking(unittest.TestCase):
         self.assertEqual(evaluate_tracking(inside, [dr], state, last, 11.0, "12:00", 0.4), [])
         self.assertEqual(len(evaluate_tracking(inside, [dr], state, last, 12.0, "12:00", 0.4)), 1)  # 5s in -> fires
 
+    def test_orphaned_rule_with_no_zone_is_skipped_not_crashed(self):
+        # a tripwire/dwell rule whose zone was deleted resolves with zone=None;
+        # evaluate must skip it, not crash on rule["zone"][0] / len(None)
+        state, last = {}, {1: (0.4, 0.6)}
+        tracks = [T(1, 0.55, 0.5, 0.1, 0.1)]
+        tw = rule(zone=None)
+        dw = rule(type="dwell", zone=None, direction=None, dwell_seconds=3)
+        self.assertEqual(evaluate_tracking(tracks, [tw], state, last, 0.0, "12:00", 0.4), [])
+        self.assertEqual(evaluate_tracking(tracks, [dw], state, last, 5.0, "12:00", 0.4), [])
+
     def test_class_and_conf_and_schedule_filter(self):
         state, last = {}, {1: (0.4, 0.6)}
         car = [T(1, 0.55, 0.5, 0.1, 0.1, label="car")]

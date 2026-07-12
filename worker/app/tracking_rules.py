@@ -57,6 +57,10 @@ def evaluate_tracking(tracks, rules, state, last_center, now_s, now_hhmm, defaul
         s, e = rule.get("schedule", [None, None])
         if not schedule_active(s, e, now_hhmm):
             continue
+        # tripwire/dwell always need geometry; if the zone was deleted the rule is
+        # orphaned (zone=None) — skip it rather than crash on rule["zone"][0].
+        if not rule.get("zone"):
+            continue
         min_conf = rule.get("min_confidence") or default_conf
         classes = rule["classes"]
         rid = rule["id"]

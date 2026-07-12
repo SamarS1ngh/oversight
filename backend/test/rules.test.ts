@@ -125,6 +125,17 @@ test("PATCH cannot clear a tripwire's line zone (explicit null) into an invalid 
   expect(noDir.status).toBe(400);
 });
 
+test("resolveRules drops a tripwire whose line zone was deleted (orphaned, would crash worker)", async () => {
+  if (!dbUp) return;
+  const a = await user();
+  const line = await (await a.authed(`/cameras/${a.cam.id}/zones`, json({ name: "L", kind: "line", polygon: [{ x: 0.2, y: 0.5 }, { x: 0.8, y: 0.5 }] }))).json();
+  await a.authed(`/cameras/${a.cam.id}/rules`, json({ name: "cross", type: "tripwire", classes: ["person"], zoneId: line.id, direction: "in" }));
+  // deleting the zone cascades rule.zoneId -> null (orphaned tripwire)
+  await a.authed(`/cameras/${a.cam.id}/zones/${line.id}`, { method: "DELETE" });
+  const resolved = await resolveRules(a.cam.id);
+  expect(resolved.filter((r) => r.type === "tripwire")).toEqual([]);
+});
+
 test("resolveRules inlines the zone polygon and only returns enabled rules", async () => {
   if (!dbUp) return;
   const a = await user();
