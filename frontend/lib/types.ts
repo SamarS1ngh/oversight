@@ -14,6 +14,10 @@ export type Camera = {
 export type Severity = "low" | "medium" | "high";
 export type AlertStatus = "new" | "acked" | "resolved";
 
+export type ZoneKind = "polygon" | "line";
+export type RuleType = "presence" | "tripwire" | "dwell";
+export type Direction = "in" | "out" | "both";
+
 export type Alert = {
   id: string;
   cameraId: string;
@@ -37,6 +41,7 @@ export type Zone = {
   cameraId: string;
   name: string;
   polygon: { x: number; y: number }[];
+  kind: ZoneKind;
   createdAt: string;
 };
 
@@ -51,6 +56,9 @@ export type Rule = {
   minConfidence: number;
   severity: Severity;
   enabled: boolean;
+  type: RuleType;
+  direction: Direction | null;
+  dwellSeconds: number | null;
   createdAt: string;
   updatedAt: string;
 };
