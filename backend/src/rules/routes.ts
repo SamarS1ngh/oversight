@@ -217,7 +217,15 @@ ruleRoutes.patch("/:ruleId", async (c) => {
   }
   const [cur] = await db.select().from(rules).where(and(eq(rules.id, c.req.param("ruleId")), eq(rules.cameraId, cam.id))).limit(1);
   if (!cur) return c.json({ error: "not found" }, 404);
-  const effective = { type: b.type ?? cur.type, zoneId: b.zoneId ?? cur.zoneId, direction: b.direction ?? cur.direction, dwellSeconds: b.dwellSeconds ?? cur.dwellSeconds };
+  // Merge by KEY PRESENCE, not `??`: an explicit null (e.g. clearing a zone) must
+  // be validated as the new value, else a tripwire could be PATCHed to zoneId:null,
+  // pass validation against the old zone, and persist an invalid rule.
+  const effective = {
+    type: "type" in b ? b.type : cur.type,
+    zoneId: "zoneId" in b ? b.zoneId : cur.zoneId,
+    direction: "direction" in b ? b.direction : cur.direction,
+    dwellSeconds: "dwellSeconds" in b ? b.dwellSeconds : cur.dwellSeconds,
+  };
   const tErr = await validateRuleType(cam.id, effective);
   if (tErr) return c.json({ error: tErr }, 400);
   const patch: Record<string, unknown> = { updatedAt: new Date() };

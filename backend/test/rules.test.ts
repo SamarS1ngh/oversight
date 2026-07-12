@@ -112,6 +112,19 @@ test("a rule cannot reference another camera's zone (POST or PATCH)", async () =
   expect(patch.status).toBe(400);
 });
 
+test("PATCH cannot clear a tripwire's line zone (explicit null) into an invalid rule", async () => {
+  if (!dbUp) return;
+  const a = await user();
+  const line = await (await a.authed(`/cameras/${a.cam.id}/zones`, json({ name: "L", kind: "line", polygon: [{ x: 0.2, y: 0.5 }, { x: 0.8, y: 0.5 }] }))).json();
+  const rule = await (await a.authed(`/cameras/${a.cam.id}/rules`, json({ name: "cross", type: "tripwire", classes: ["person"], zoneId: line.id, direction: "in" }))).json();
+  // explicit null zoneId must be validated as the new value (tripwire needs a line zone) -> 400
+  const cleared = await a.authed(`/cameras/${a.cam.id}/rules/${rule.id}`, { method: "PATCH", body: JSON.stringify({ zoneId: null }) });
+  expect(cleared.status).toBe(400);
+  // dropping the direction to null is likewise rejected
+  const noDir = await a.authed(`/cameras/${a.cam.id}/rules/${rule.id}`, { method: "PATCH", body: JSON.stringify({ direction: null }) });
+  expect(noDir.status).toBe(400);
+});
+
 test("resolveRules inlines the zone polygon and only returns enabled rules", async () => {
   if (!dbUp) return;
   const a = await user();
