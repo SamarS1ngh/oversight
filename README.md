@@ -66,7 +66,7 @@ recording knobs added for the clip/thumbnail feature, plus rules-engine settings
 | `MODEL_CLASSES` | `person,bicycle,car,motorcycle,bus,truck,cat,dog,backpack,handbag,suitcase` | worker | comma-separated YOLO detection classes |
 | `TZ` | `UTC` | worker | timezone for schedule windows in alert rules |
 
-**Rules & Zones:** cameras now support drawing polygonal zones and creating alert rules (class-based, zone-bound, scheduled, severity-tiered).
+**Rules & Zones:** cameras now support drawing zones and creating alert rules. Presence rules detect when objects enter a zone; tripwire rules detect line-crossing; dwell rules detect loitering. The worker uses **ByteTrack** (`supervision`) for multi-object tracking across frames to power tripwire and dwell detection.
 
 ---
 
