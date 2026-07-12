@@ -112,6 +112,29 @@ export const KNOWN_CLASSES = [
 ];
 const SEVERITIES = ["low", "medium", "high"];
 const HHMM = /^([01]\d|2[0-3]):[0-5]\d$/;
+const RULE_TYPES = ["presence", "tripwire", "dwell"];
+const DIRECTIONS = ["in", "out", "both"];
+
+async function zoneKind(cameraId: string, zoneId: string): Promise<string | null> {
+  const [z] = await db.select({ kind: zones.kind }).from(zones).where(and(eq(zones.id, zoneId), eq(zones.cameraId, cameraId))).limit(1);
+  return z?.kind ?? null;
+}
+
+// Validate the type-specific requirements. Returns an error string or null.
+async function validateRuleType(cameraId: string, b: any): Promise<string | null> {
+  const type = b.type ?? "presence";
+  if (!RULE_TYPES.includes(type)) return "type must be presence|tripwire|dwell";
+  if (type === "tripwire") {
+    if (!b.zoneId) return "tripwire needs a line zone";
+    if (await zoneKind(cameraId, b.zoneId) !== "line") return "tripwire needs a line-kind zone";
+    if (!DIRECTIONS.includes(b.direction)) return "tripwire needs direction in|out|both";
+  } else if (type === "dwell") {
+    if (!b.zoneId) return "dwell needs a polygon zone";
+    if (await zoneKind(cameraId, b.zoneId) !== "polygon") return "dwell needs a polygon-kind zone";
+    if (typeof b.dwellSeconds !== "number" || b.dwellSeconds <= 0) return "dwell needs dwellSeconds > 0";
+  }
+  return null;
+}
 
 function validateRuleBody(b: any): string | null {
   if (!b?.name?.trim()) return "name required";
@@ -159,10 +182,15 @@ ruleRoutes.post("/", async (c) => {
   if (b.zoneId && !(await zoneBelongs(cam.id, b.zoneId))) {
     return c.json({ error: "zone not found for this camera" }, 400);
   }
+  const tErr = await validateRuleType(cam.id, b);
+  if (tErr) return c.json({ error: tErr }, 400);
   const [rule] = await db.insert(rules).values({
     cameraId: cam.id,
     name: b.name.trim(),
     zoneId: b.zoneId || null,
+    type: b.type ?? "presence",
+    direction: b.direction ?? null,
+    dwellSeconds: typeof b.dwellSeconds === "number" ? b.dwellSeconds : null,
     classes: b.classes,
     scheduleStart: b.scheduleStart ?? null,
     scheduleEnd: b.scheduleEnd ?? null,
@@ -187,8 +215,13 @@ ruleRoutes.patch("/:ruleId", async (c) => {
   if (b.zoneId && !(await zoneBelongs(cam.id, b.zoneId))) {
     return c.json({ error: "zone not found for this camera" }, 400);
   }
+  const [cur] = await db.select().from(rules).where(and(eq(rules.id, c.req.param("ruleId")), eq(rules.cameraId, cam.id))).limit(1);
+  if (!cur) return c.json({ error: "not found" }, 404);
+  const effective = { type: b.type ?? cur.type, zoneId: b.zoneId ?? cur.zoneId, direction: b.direction ?? cur.direction, dwellSeconds: b.dwellSeconds ?? cur.dwellSeconds };
+  const tErr = await validateRuleType(cam.id, effective);
+  if (tErr) return c.json({ error: tErr }, 400);
   const patch: Record<string, unknown> = { updatedAt: new Date() };
-  for (const k of ["name", "classes", "zoneId", "scheduleStart", "scheduleEnd", "minConfidence", "severity", "enabled"]) {
+  for (const k of ["name", "classes", "zoneId", "scheduleStart", "scheduleEnd", "minConfidence", "severity", "enabled", "type", "direction", "dwellSeconds"]) {
     if (b[k] !== undefined) patch[k === "name" ? "name" : k] = k === "name" ? String(b[k]).trim() : b[k];
   }
   // clearing the zone (null / "") normalizes to null; never store an empty string in a uuid column
@@ -212,8 +245,11 @@ ruleRoutes.delete("/:ruleId", async (c) => {
 // inlined) for delivery to the worker.
 export type ResolvedRule = {
   id: string;
+  type: string;
   classes: string[];
   zone: { x: number; y: number }[] | null;
+  direction: string | null;
+  dwell_seconds: number | null;
   schedule: [string | null, string | null];
   min_confidence: number;
   severity: string;
@@ -228,8 +264,11 @@ export async function resolveRules(cameraId: string): Promise<ResolvedRule[]> {
     .where(and(eq(rules.cameraId, cameraId), eq(rules.enabled, true)));
   return rows.map((r) => ({
     id: r.id,
+    type: r.type,
     classes: r.classes as string[],
     zone: (r.zonePolygon as { x: number; y: number }[] | null) ?? null,
+    direction: r.direction,
+    dwell_seconds: r.dwellSeconds,
     schedule: [r.scheduleStart, r.scheduleEnd],
     min_confidence: r.minConfidence,
     severity: r.severity,

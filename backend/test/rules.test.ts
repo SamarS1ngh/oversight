@@ -126,6 +126,43 @@ test("resolveRules inlines the zone polygon and only returns enabled rules", asy
   expect(resolved[0].severity).toBe("high");
 });
 
+test("tripwire rule requires a line zone + direction; dwell requires a polygon zone + seconds", async () => {
+  if (!dbUp) return;
+  const a = await user();
+  const line = await (await a.authed(`/cameras/${a.cam.id}/zones`, json({ name: "L", kind: "line", polygon: [{ x: 0.2, y: 0.5 }, { x: 0.8, y: 0.5 }] }))).json();
+  const poly = await (await a.authed(`/cameras/${a.cam.id}/zones`, json({ name: "P", kind: "polygon", polygon: [{ x: 0.1, y: 0.1 }, { x: 0.9, y: 0.1 }, { x: 0.5, y: 0.9 }] }))).json();
+  // valid tripwire
+  const tw = await a.authed(`/cameras/${a.cam.id}/rules`, json({ name: "cross", type: "tripwire", classes: ["person"], zoneId: line.id, direction: "in", severity: "high" }));
+  expect(tw.status).toBe(201);
+  // tripwire pointing at a polygon zone -> 400
+  const twBad = await a.authed(`/cameras/${a.cam.id}/rules`, json({ name: "bad", type: "tripwire", classes: ["person"], zoneId: poly.id, direction: "in" }));
+  expect(twBad.status).toBe(400);
+  // tripwire missing direction -> 400
+  const twNoDir = await a.authed(`/cameras/${a.cam.id}/rules`, json({ name: "bad2", type: "tripwire", classes: ["person"], zoneId: line.id }));
+  expect(twNoDir.status).toBe(400);
+  // valid dwell
+  const dw = await a.authed(`/cameras/${a.cam.id}/rules`, json({ name: "loiter", type: "dwell", classes: ["person"], zoneId: poly.id, dwellSeconds: 5 }));
+  expect(dw.status).toBe(201);
+  // dwell on a line zone -> 400
+  const dwBad = await a.authed(`/cameras/${a.cam.id}/rules`, json({ name: "bad3", type: "dwell", classes: ["person"], zoneId: line.id, dwellSeconds: 5 }));
+  expect(dwBad.status).toBe(400);
+  // dwell without seconds -> 400
+  const dwNoS = await a.authed(`/cameras/${a.cam.id}/rules`, json({ name: "bad4", type: "dwell", classes: ["person"], zoneId: poly.id }));
+  expect(dwNoS.status).toBe(400);
+});
+
+test("resolveRules returns type/direction/dwell_seconds", async () => {
+  if (!dbUp) return;
+  const a = await user();
+  const line = await (await a.authed(`/cameras/${a.cam.id}/zones`, json({ name: "L", kind: "line", polygon: [{ x: 0.2, y: 0.5 }, { x: 0.8, y: 0.5 }] }))).json();
+  await a.authed(`/cameras/${a.cam.id}/rules`, json({ name: "cross", type: "tripwire", classes: ["person"], zoneId: line.id, direction: "out", severity: "high" }));
+  const { resolveRules } = await import("../src/rules/routes");
+  const resolved = await resolveRules(a.cam.id);
+  const tw = resolved.find((r: any) => r.type === "tripwire");
+  expect(tw.direction).toBe("out");
+  expect(tw.zone).toEqual([{ x: 0.2, y: 0.5 }, { x: 0.8, y: 0.5 }]);
+});
+
 test("alerts severity/status filter + ack + resolve", async () => {
   if (!dbUp) return;
   const a = await user();
