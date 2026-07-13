@@ -8,7 +8,7 @@ import { buildRequest, send } from "./drivers";
 import { env } from "../env";
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-const TYPES = ["webhook", "ntfy", "telegram", "pushover"];
+const TYPES = ["webhook", "ntfy", "telegram", "pushover", "webpush"];
 const SEVERITIES = ["low", "medium", "high"];
 
 export async function ownedChannel(userId: string, id: string) {
@@ -24,7 +24,7 @@ export async function ownedChannel(userId: string, id: string) {
 // null if valid, else an error string.
 export function validateChannel(b: any): string | null {
   if (typeof b?.name !== "string" || !b.name.trim()) return "name required";
-  if (!TYPES.includes(b.type)) return "type must be webhook|ntfy|telegram";
+  if (!TYPES.includes(b.type)) return "type must be webhook|ntfy|telegram|pushover|webpush";
   if (b.minSeverity !== undefined && !SEVERITIES.includes(b.minSeverity)) return "minSeverity must be low|medium|high";
   if (b.cooldownSecs !== undefined && (typeof b.cooldownSecs !== "number" || !Number.isFinite(b.cooldownSecs) || b.cooldownSecs < 0)) return "cooldownSecs must be a finite number >= 0";
   if (b.enabled !== undefined && typeof b.enabled !== "boolean") return "enabled must be a boolean";
@@ -34,11 +34,14 @@ export function validateChannel(b: any): string | null {
   if (b.type === "ntfy" && !cfg.topic) return "ntfy config needs a topic";
   if (b.type === "telegram" && (!cfg.botToken || !cfg.chatId)) return "telegram config needs botToken + chatId";
   if (b.type === "pushover" && (!cfg.token || !cfg.user)) return "pushover config needs token + user";
+  if (b.type === "webpush" && (!cfg.endpoint || !cfg.p256dh || !cfg.auth)) return "webpush config needs a subscription";
   return null;
 }
 
 export const notifyRoutes = new Hono();
 notifyRoutes.use("*", requireAuth);
+
+notifyRoutes.get("/vapid-public-key", (c) => c.json({ key: env.VAPID_PUBLIC_KEY }));
 
 notifyRoutes.get("/", async (c) => {
   const rows = await db.select().from(notificationChannels)

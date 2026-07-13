@@ -11,4 +11,7 @@ export const env = {
   RETENTION_DAYS: Number(process.env.RETENTION_DAYS ?? 7),
   MAX_STORAGE_GB: Number(process.env.MAX_STORAGE_GB ?? 10),
   APP_URL: process.env.APP_URL ?? "http://localhost:3000",
+  VAPID_PUBLIC_KEY: process.env.VAPID_PUBLIC_KEY ?? "",
+  VAPID_PRIVATE_KEY: process.env.VAPID_PRIVATE_KEY ?? "",
+  VAPID_SUBJECT: process.env.VAPID_SUBJECT ?? "mailto:admin@example.com",
 };

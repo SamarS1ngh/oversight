@@ -38,6 +38,13 @@ export function renderAlert(
       click: link,
     };
   }
+  if (type === "webpush") {
+    return {
+      title: `${cameraName}: ${sev} ${label}`,
+      body: `${rule} · ${alert.count}`,
+      click: link,
+    };
+  }
   if (type === "pushover") {
     const PO: Record<string, number> = { low: -1, medium: 0, high: 1 };
     const time = new Date(alert.ts).toLocaleString();

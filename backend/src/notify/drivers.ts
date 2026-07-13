@@ -1,3 +1,5 @@
+import { env } from "../env";
+
 export type OutReq = { url: string; method: string; headers: Record<string, string>; body: string };
 
 export function buildRequest(type: string, config: any, payload: any): OutReq {
@@ -61,6 +63,19 @@ export async function sendChannel(
   payload: any,
   snapshot?: { bytes: Uint8Array; url: string } | null,
 ): Promise<{ ok: boolean; status: number }> {
+  if (type === "webpush") {
+    const webpush = (await import("web-push")).default;
+    webpush.setVapidDetails(env.VAPID_SUBJECT, env.VAPID_PUBLIC_KEY, env.VAPID_PRIVATE_KEY);
+    const sub = { endpoint: config.endpoint, keys: { p256dh: config.p256dh, auth: config.auth } };
+    const data = JSON.stringify({ title: payload.title, body: payload.body, image: snapshot?.url ?? null, click: payload.click });
+    try {
+      const r = await webpush.sendNotification(sub as any, data);
+      return { ok: true, status: r.statusCode };
+    } catch (e: any) {
+      if (e?.statusCode === 404 || e?.statusCode === 410) { const err: any = new Error("WEBPUSH_GONE"); err.gone = true; throw err; }
+      throw e;
+    }
+  }
   if (snapshot && type === "ntfy") {
     const server = (config.server ?? "https://ntfy.sh").replace(/\/$/, "");
     const headers: Record<string, string> = {

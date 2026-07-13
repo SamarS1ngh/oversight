@@ -100,6 +100,11 @@ test("buildRequest telegram posts to the bot sendMessage with chat_id", () => {
   expect(b.text).toBe("hi");
 });
 
+test("renderAlert webpush yields title/body/click", () => {
+  const p: any = renderAlert("webpush", ALERT, "Cam", "R", LINK);
+  expect(p.title).toContain("Cam"); expect(p.click).toBe(LINK);
+});
+
 test("renderAlert pushover maps severity to priority + carries url", () => {
   const p: any = renderAlert("pushover", ALERT, "Driveway", "Night", LINK);
   expect(p.priority).toBe(1); // high

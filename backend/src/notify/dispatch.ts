@@ -47,7 +47,11 @@ export async function dispatchNotifications(alert: any, ownerId: string): Promis
         if (!allow(`${ch.id}:${alert.camera_id}`, now, ch.cooldownSecs)) continue;
         const payload = renderAlert(ch.type, alert, cameraName, ruleName, link, snap?.url ?? null);
         await sendChannel(ch.type, ch.config, payload, snap);
-      } catch (e) {
+      } catch (e: any) {
+        if (e?.gone) {
+          await db.delete(notificationChannels).where(eq(notificationChannels.id, ch.id)).catch(() => {});
+          continue;
+        }
         console.error(`[notify] channel ${ch.id} (${ch.type}) failed:`, (e as Error).message);
       }
     }
