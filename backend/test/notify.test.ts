@@ -1,8 +1,11 @@
-import { test, expect } from "bun:test";
+import { test, expect, beforeAll } from "bun:test";
+import { sql } from "drizzle-orm";
 import { sevRank, shouldNotify } from "../src/notify/filter";
 import { allow, _reset } from "../src/notify/cooldown";
 import { renderAlert } from "../src/notify/render";
 import { buildRequest } from "../src/notify/drivers";
+import { app } from "../src/app";
+import { db } from "../src/db";
 
 test("sevRank orders severities", () => {
   expect(sevRank("low")).toBe(0);
@@ -90,4 +93,54 @@ test("buildRequest telegram posts to the bot sendMessage with chat_id", () => {
   const b = JSON.parse(r.body);
   expect(b.chat_id).toBe("123");
   expect(b.text).toBe("hi");
+});
+
+// Integration tests against a live Postgres. They self-skip if no DB is
+// reachable, so `bun test` still passes the unit suite without infra.
+// To run these: have the compose Postgres up and
+//   DATABASE_URL=postgres://vms:vms_dev_pw@localhost:5432/vms bun test
+
+let dbUp = false;
+beforeAll(async () => {
+  try {
+    await db.execute(sql`select 1`);
+    dbUp = true;
+  } catch {
+    dbUp = false;
+  }
+});
+const call = (p: string, o: RequestInit = {}) => app.fetch(new Request(`http://test${p}`, o));
+const json = (b: unknown): RequestInit => ({ method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(b) });
+const rnd = () => Math.random().toString(36).slice(2, 9);
+async function nuser() {
+  const r = await call("/auth/signup", json({ username: "n_" + rnd(), password: "secret12" }));
+  const { token } = await r.json();
+  return (p: string, o: RequestInit = {}) => call(p, { ...o, headers: { ...(o.headers ?? {}), Authorization: `Bearer ${token}` } });
+}
+
+test("notifications require auth", async () => {
+  expect((await call("/notifications")).status).toBe(401);
+});
+
+test("create + list a channel, owner-scoped", async () => {
+  if (!dbUp) return;
+  const a = await nuser();
+  const created = await a(`/notifications`, json({ type: "ntfy", name: "phone", config: { topic: "mytopic" }, minSeverity: "high" }));
+  expect(created.status).toBe(201);
+  const ch = await created.json();
+  expect(ch.type).toBe("ntfy");
+  const list = await (await a(`/notifications`)).json();
+  expect(list.map((x: any) => x.id)).toContain(ch.id);
+  // another user can't see / delete it
+  const b = await nuser();
+  expect((await b(`/notifications/${ch.id}`, { method: "DELETE" })).status).toBe(404);
+});
+
+test("validation: bad type / missing per-type config / bad severity", async () => {
+  if (!dbUp) return;
+  const a = await nuser();
+  expect((await a(`/notifications`, json({ type: "carrier-pigeon", name: "x", config: {} }))).status).toBe(400);
+  expect((await a(`/notifications`, json({ type: "webhook", name: "x", config: {} }))).status).toBe(400); // no url
+  expect((await a(`/notifications`, json({ type: "telegram", name: "x", config: { botToken: "b" } }))).status).toBe(400); // no chatId
+  expect((await a(`/notifications`, json({ type: "ntfy", name: "x", config: { topic: "t" }, minSeverity: "urgent" }))).status).toBe(400);
 });
