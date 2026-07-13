@@ -68,7 +68,7 @@ recording knobs added for the clip/thumbnail feature, plus rules-engine settings
 
 **Rules & Zones:** cameras now support drawing zones and creating alert rules. Presence rules detect when objects enter a zone; tripwire rules detect line-crossing; dwell rules detect loitering. The worker uses **ByteTrack** (`supervision`) for multi-object tracking across frames to power tripwire and dwell detection.
 
-**Notifications:** alerts can be delivered to **webhook**, **ntfy**, or **Telegram** channels (configured under **Notifications** in the dashboard), with `APP_URL` set to your reachable frontend URL so alerts include a clickable link back to the dashboard.
+**Notifications (M3b):** alerts are delivered to **webhook**, **ntfy**, **Telegram**, **Pushover**, and **web push** channels (configured under **Notifications** in the dashboard). All notification payloads include a snapshot image from the detection frame — uploaded directly to ntfy/Telegram/Pushover services, or embedded as a signed URL (reachable via token auth) for webhook and web-push clients. Web push requires VAPID keys (set `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, `VAPID_SUBJECT` in `.env` — generate them with `bun run backend/scripts/gen-vapid.ts`) and works on HTTPS or `localhost` (service worker requirement). Failed notification sends are automatically retried by a background queue; delivery status is tracked in the `notification_deliveries` table.
 
 ---
 
