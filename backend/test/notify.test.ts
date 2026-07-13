@@ -232,6 +232,18 @@ test("POST /notifications/:id/test delivers to a webhook", async () => {
   server.stop();
 });
 
+test("POST /:id/test on a webpush channel routes through sendChannel (not the telegram default)", async () => {
+  if (!dbUp) return;
+  const a = await nuser();
+  const ch = await (await a(`/notifications`, json({ type: "webpush", name: "b", config: { endpoint: "https://push.example/x", p256dh: "BPabc", auth: "xyz" } }))).json();
+  const res = await a(`/notifications/${ch.id}/test`, { method: "POST" });
+  expect(res.status).toBe(200);
+  const body = await res.json();
+  expect(body.ok).toBe(false);
+  // proves it hit the webpush branch (VAPID unset → web-push throws) rather than building a telegram request
+  expect(String(body.error ?? "")).toMatch(/vapid|public|key/i);
+});
+
 test("notification_deliveries table is queryable", async () => {
   if (!dbUp) return;
   const rows = await db.select().from(notificationDeliveries).limit(1);

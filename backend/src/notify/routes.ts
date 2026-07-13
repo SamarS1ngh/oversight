@@ -4,7 +4,7 @@ import { db } from "../db";
 import { notificationChannels, cameras } from "../db/schema";
 import { requireAuth } from "../auth/middleware";
 import { renderAlert } from "./render";
-import { buildRequest, send } from "./drivers";
+import { sendChannel } from "./drivers";
 import { env } from "../env";
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -111,7 +111,7 @@ notifyRoutes.post("/:id/test", async (c) => {
   const link = `${env.APP_URL}/events?camera=${cameraId}`;
   try {
     const payload = renderAlert(ch.type, synthetic, cam?.name ?? "test camera", "test", link);
-    const res = await send(buildRequest(ch.type, ch.config, payload));
+    const res = await sendChannel(ch.type, ch.config, payload, null);
     return c.json({ ok: res.ok, status: res.status });
   } catch (e) {
     return c.json({ ok: false, error: (e as Error).message }, 200);
