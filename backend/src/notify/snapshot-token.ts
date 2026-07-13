@@ -19,6 +19,8 @@ export function verifySnapshotToken(alertId: string, token: string, nowMs: numbe
   const sig = token.slice(dot + 1);
   if (!Number.isFinite(exp) || exp < nowMs) return false;
   const expected = mac(alertId, exp);
-  if (sig.length !== expected.length) return false;
-  return timingSafeEqual(Buffer.from(sig), Buffer.from(expected));
+  const sigBuf = Buffer.from(sig);
+  const expBuf = Buffer.from(expected);
+  if (sigBuf.length !== expBuf.length) return false;
+  return timingSafeEqual(sigBuf, expBuf);
 }

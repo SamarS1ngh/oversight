@@ -22,3 +22,18 @@ test("a tampered token is rejected", () => {
   const t = signSnapshotToken(A, 1000, 60_000);
   expect(verifySnapshotToken(A, t.replace(/.$/, (c) => (c === "0" ? "1" : "0")), 2000)).toBe(false);
 });
+
+test("a multibyte-char signature of equal code-unit length is rejected, not thrown", () => {
+  const t = signSnapshotToken(A, 1000, 60_000);
+  const exp = t.slice(0, t.indexOf(".") + 1);
+  const forged = exp + "a".repeat(63) + "é"; // .length 64 like the real 64-hex mac, but 65 bytes
+  expect(verifySnapshotToken(A, forged, 2000)).toBe(false);
+});
+
+test("a token with no delimiter is rejected", () => {
+  expect(verifySnapshotToken(A, "notatoken", 2000)).toBe(false);
+});
+
+test("a non-numeric exp is rejected", () => {
+  expect(verifySnapshotToken(A, "abc.deadbeef", 2000)).toBe(false);
+});
