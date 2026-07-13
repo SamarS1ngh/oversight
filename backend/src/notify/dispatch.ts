@@ -9,6 +9,7 @@ import { allow } from "./cooldown";
 import { renderAlert } from "./render";
 import { sendChannel } from "./drivers";
 import { snapshotUrl } from "./snapshot-url";
+import { enqueueFailure } from "./retry";
 
 // Fire-and-forget: dispatch one persisted alert (the detection event `d`, snake_case)
 // to the owner's enabled channels. Never throws to the caller.
@@ -53,6 +54,7 @@ export async function dispatchNotifications(alert: any, ownerId: string): Promis
           continue;
         }
         console.error(`[notify] channel ${ch.id} (${ch.type}) failed:`, (e as Error).message);
+        await enqueueFailure(ch.id, alert.id ?? null, { type: ch.type, config: ch.config, alert, cameraName, ruleName, link }, (e as Error).message, now).catch(() => {});
       }
     }
   } catch (e) {
