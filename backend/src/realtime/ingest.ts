@@ -57,6 +57,7 @@ async function onDetection(d: any) {
         label: d.label ?? null,
         ruleId: d.rule_id ?? null,
         severity: d.severity ?? "low",
+        snapshotPath: d.snapshot_path ?? null,
       })
       .onConflictDoNothing();
   } catch (e) {
