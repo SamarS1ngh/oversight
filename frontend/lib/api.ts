@@ -94,6 +94,14 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ sdp, type: "offer" }),
     }),
+
+  listChannels: () => req("/notifications"),
+  createChannel: (body: Record<string, unknown>) =>
+    req("/notifications", { method: "POST", body: JSON.stringify(body) }),
+  updateChannel: (id: string, body: Record<string, unknown>) =>
+    req(`/notifications/${id}`, { method: "PATCH", body: JSON.stringify(body) }),
+  deleteChannel: (id: string) => req(`/notifications/${id}`, { method: "DELETE" }),
+  testChannel: (id: string) => req(`/notifications/${id}/test`, { method: "POST" }),
 };
 
 export function clipVideoUrl(id: string) {
