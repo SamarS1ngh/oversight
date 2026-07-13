@@ -150,9 +150,33 @@ export const rules = pgTable(
   (t) => ({ cameraIdx: index("rules_camera_idx").on(t.cameraId) }),
 );
 
+// A user's notification destination (webhook / ntfy / telegram). Config holds the
+// per-type target + secrets. See docs/superpowers/specs M3a.
+export const notificationChannels = pgTable(
+  "notification_channels",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    type: text("type").notNull(), // 'webhook' | 'ntfy' | 'telegram'
+    name: text("name").notNull(),
+    config: jsonb("config").notNull(),
+    minSeverity: text("min_severity").notNull().default("low"),
+    cameraIds: jsonb("camera_ids"), // string[] | null (null = all)
+    cooldownSecs: integer("cooldown_secs").notNull().default(60),
+    enabled: boolean("enabled").notNull().default(true),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => ({ userIdx: index("notification_channels_user_idx").on(t.userId) }),
+);
+
 export type User = typeof users.$inferSelect;
 export type Camera = typeof cameras.$inferSelect;
 export type Alert = typeof alerts.$inferSelect;
 export type Clip = typeof clips.$inferSelect;
 export type Zone = typeof zones.$inferSelect;
 export type Rule = typeof rules.$inferSelect;
+export type NotifChannel = typeof notificationChannels.$inferSelect;
