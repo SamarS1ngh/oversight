@@ -41,3 +41,20 @@ test("a failing send bumps attempts + backoff, dead at 5", async () => {
   expect(dead.status).toBe("dead");
   expect(dead.attempts).toBeGreaterThanOrEqual(5);
 });
+
+test("a stuck 'sending' row past its lease is reclaimed and re-sent", async () => {
+  if (!dbUp) return;
+  const ch = await seedChannel();
+  // simulate a crash after claim (status='sending') but before the terminal
+  // update — a lease that already expired in the past.
+  await db.insert(notificationDeliveries).values({
+    channelId: ch.id, alertId: null,
+    payload: { type: "webhook", config: ch.config, alert: { id: "a3", camera_id: "c", ts: new Date().toISOString(), count: 1, confidence: 1, severity: "low" }, cameraName: "c", ruleName: null, link: "http://l" },
+    attempts: 1, nextAttemptAt: new Date(0), status: "sending",
+  });
+  const [row] = await db.select().from(notificationDeliveries).where(eq(notificationDeliveries.channelId, ch.id));
+  expect(row.status).toBe("sending");
+  await sweepOnce(Date.now(), async () => ({ ok: true, status: 200 }));
+  const [after] = await db.select().from(notificationDeliveries).where(eq(notificationDeliveries.channelId, ch.id));
+  expect(after.status).toBe("sent");
+});

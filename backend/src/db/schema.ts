@@ -187,7 +187,7 @@ export const notificationDeliveries = pgTable(
     payload: jsonb("payload").notNull(), // render inputs to rebuild the send
     attempts: integer("attempts").notNull().default(1),
     nextAttemptAt: timestamp("next_attempt_at", { withTimezone: true }).notNull(),
-    status: text("status").notNull().default("pending"), // pending | sent | dead
+    status: text("status").notNull().default("pending"), // pending | sending | dead | sent (sending = transient claim/lease)
     lastError: text("last_error"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
