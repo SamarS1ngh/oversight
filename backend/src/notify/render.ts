@@ -10,6 +10,7 @@ export function renderAlert(
   cameraName: string,
   ruleName: string | null,
   link: string,
+  snapshotUrl?: string | null,
 ): Record<string, unknown> {
   const sev = alert.severity ?? "low";
   const label = alert.label ?? "detection";
@@ -25,6 +26,7 @@ export function renderAlert(
       camera: { id: alert.camera_id, name: cameraName },
       rule: alert.rule_id ? { id: alert.rule_id, name: ruleName } : null,
       url: link,
+      snapshotUrl: snapshotUrl ?? null,
     };
   }
   if (type === "ntfy") {

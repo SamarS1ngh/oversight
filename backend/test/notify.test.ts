@@ -117,6 +117,23 @@ test("buildRequest pushover posts a form to the messages API", () => {
   expect(body.get("priority")).toBe("1");
 });
 
+test("ntfy send uploads snapshot bytes as the body when a snapshot exists", async () => {
+  const { sendChannel } = await import("../src/notify/drivers");
+  let gotBody: ArrayBuffer | null = null; let title: string | null = null;
+  const server = Bun.serve({ port: 0, async fetch(req) { title = req.headers.get("Title"); gotBody = await req.arrayBuffer(); return new Response("ok"); } });
+  const payload: any = { title: "T", body: "B", priority: 5, tags: ["high"], click: "http://l" };
+  const bytes = new Uint8Array([1, 2, 3, 4]);
+  const res = await sendChannel("ntfy", { server: `http://127.0.0.1:${server.port}`, topic: "t" }, payload, { bytes, url: "http://snap" });
+  expect(res.ok).toBe(true);
+  expect(new Uint8Array(gotBody!)).toEqual(bytes);
+  expect(title).toBe("T");
+  server.stop();
+});
+test("webhook payload gains snapshotUrl when a snapshot exists", () => {
+  const p: any = renderAlert("webhook", ALERT, "Cam", "R", LINK, "http://snap/x.jpg");
+  expect(p.snapshotUrl).toBe("http://snap/x.jpg");
+});
+
 test("validateChannel: pushover needs token + user", async () => {
   if (!dbUp) return;
   const a = await nuser();

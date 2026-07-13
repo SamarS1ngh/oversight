@@ -1,11 +1,14 @@
 import { and, eq } from "drizzle-orm";
+import { promises as fs } from "fs";
+import { join } from "path";
 import { db } from "../db";
 import { notificationChannels, cameras, rules } from "../db/schema";
 import { env } from "../env";
 import { shouldNotify } from "./filter";
 import { allow } from "./cooldown";
 import { renderAlert } from "./render";
-import { buildRequest, send } from "./drivers";
+import { sendChannel } from "./drivers";
+import { snapshotUrl } from "./snapshot-url";
 
 // Fire-and-forget: dispatch one persisted alert (the detection event `d`, snake_case)
 // to the owner's enabled channels. Never throws to the caller.
@@ -25,12 +28,25 @@ export async function dispatchNotifications(alert: any, ownerId: string): Promis
     const link = `${env.APP_URL}/events?camera=${alert.camera_id}`;
     const now = Date.now();
 
+    // Read the snapshot bytes once (shared across all channels this alert
+    // goes to) rather than per-channel. A missing/unreadable file must not
+    // abort dispatch — it just means channels render without a snapshot.
+    let snap: { bytes: Uint8Array; url: string } | null = null;
+    if (alert.snapshot_path) {
+      try {
+        const bytes = new Uint8Array(await fs.readFile(join(env.RECORDINGS_DIR, alert.snapshot_path)));
+        snap = { bytes, url: snapshotUrl(alert.id, now) };
+      } catch {
+        snap = null;
+      }
+    }
+
     for (const ch of channels) {
       try {
         if (!shouldNotify(ch, alert)) continue;
         if (!allow(`${ch.id}:${alert.camera_id}`, now, ch.cooldownSecs)) continue;
-        const payload = renderAlert(ch.type, alert, cameraName, ruleName, link);
-        await send(buildRequest(ch.type, ch.config, payload));
+        const payload = renderAlert(ch.type, alert, cameraName, ruleName, link, snap?.url ?? null);
+        await sendChannel(ch.type, ch.config, payload, snap);
       } catch (e) {
         console.error(`[notify] channel ${ch.id} (${ch.type}) failed:`, (e as Error).message);
       }
