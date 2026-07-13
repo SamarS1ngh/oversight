@@ -58,6 +58,7 @@ export const alerts = pgTable(
     label: text("label"),
     ruleId: uuid("rule_id"),
     severity: text("severity").notNull().default("low"),
+    snapshotPath: text("snapshot_path"),
     status: text("status").notNull().default("new"),
     ackedAt: timestamp("acked_at", { withTimezone: true }),
     resolvedAt: timestamp("resolved_at", { withTimezone: true }),
@@ -159,7 +160,7 @@ export const notificationChannels = pgTable(
     userId: uuid("user_id")
       .notNull()
       .references(() => users.id, { onDelete: "cascade" }),
-    type: text("type").notNull(), // 'webhook' | 'ntfy' | 'telegram'
+    type: text("type").notNull(), // 'webhook' | 'ntfy' | 'telegram' | 'pushover' | 'webpush'
     name: text("name").notNull(),
     config: jsonb("config").notNull(),
     minSeverity: text("min_severity").notNull().default("low"),
@@ -173,6 +174,26 @@ export const notificationChannels = pgTable(
   (t) => ({ userIdx: index("notification_channels_user_idx").on(t.userId) }),
 );
 
+// A failed notification send, persisted for background retry (M3b). Only
+// failures land here — the happy path sends inline and writes nothing.
+export const notificationDeliveries = pgTable(
+  "notification_deliveries",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    channelId: uuid("channel_id")
+      .notNull()
+      .references(() => notificationChannels.id, { onDelete: "cascade" }),
+    alertId: uuid("alert_id"), // null for a synthetic /test send
+    payload: jsonb("payload").notNull(), // render inputs to rebuild the send
+    attempts: integer("attempts").notNull().default(1),
+    nextAttemptAt: timestamp("next_attempt_at", { withTimezone: true }).notNull(),
+    status: text("status").notNull().default("pending"), // pending | sent | dead
+    lastError: text("last_error"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({ dueIdx: index("notification_deliveries_due_idx").on(t.status, t.nextAttemptAt) }),
+);
+
 export type User = typeof users.$inferSelect;
 export type Camera = typeof cameras.$inferSelect;
 export type Alert = typeof alerts.$inferSelect;
@@ -180,3 +201,4 @@ export type Clip = typeof clips.$inferSelect;
 export type Zone = typeof zones.$inferSelect;
 export type Rule = typeof rules.$inferSelect;
 export type NotifChannel = typeof notificationChannels.$inferSelect;
+export type NotifDelivery = typeof notificationDeliveries.$inferSelect;

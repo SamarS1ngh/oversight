@@ -6,6 +6,7 @@ import { renderAlert } from "../src/notify/render";
 import { buildRequest } from "../src/notify/drivers";
 import { app } from "../src/app";
 import { db } from "../src/db";
+import { notificationDeliveries } from "../src/db/schema";
 
 test("sevRank orders severities", () => {
   expect(sevRank("low")).toBe(0);
@@ -179,4 +180,10 @@ test("POST /notifications/:id/test delivers to a webhook", async () => {
   expect(received?.event).toBe("alert");
   expect(received?.alert?.severity).toBe("high");
   server.stop();
+});
+
+test("notification_deliveries table is queryable", async () => {
+  if (!dbUp) return;
+  const rows = await db.select().from(notificationDeliveries).limit(1);
+  expect(Array.isArray(rows)).toBe(true);
 });
