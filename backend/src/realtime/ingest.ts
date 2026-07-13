@@ -5,6 +5,7 @@ import { db } from "../db";
 import { alerts, cameras, clips } from "../db/schema";
 import { ownerOf, sendToUser } from "./connections";
 import { handleAnswer } from "./signaling";
+import { dispatchNotifications } from "../notify/dispatch";
 
 // Subscribes to everything the worker emits and (a) persists alerts, (b) keeps
 // camera.status in sync, (c) fans events out to the owning user's WebSockets,
@@ -64,6 +65,7 @@ async function onDetection(d: any) {
   }
   const owner = await ownerOf(d.camera_id);
   if (owner) sendToUser(owner, { channel: "alert", data: d });
+  if (owner) void dispatchNotifications(d, owner);
 }
 
 async function onStats(s: any) {

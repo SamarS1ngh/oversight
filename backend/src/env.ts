@@ -10,4 +10,5 @@ export const env = {
   RECORDINGS_DIR: process.env.RECORDINGS_DIR ?? "/recordings",
   RETENTION_DAYS: Number(process.env.RETENTION_DAYS ?? 7),
   MAX_STORAGE_GB: Number(process.env.MAX_STORAGE_GB ?? 10),
+  APP_URL: process.env.APP_URL ?? "http://localhost:3000",
 };

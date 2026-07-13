@@ -109,6 +109,9 @@ export default function Dashboard() {
           <a href="/events" className="btn">
             Recordings
           </a>
+          <a href="/notifications" className="btn">
+            Notifications
+          </a>
           <button onClick={logout}>Logout</button>
         </div>
       </header>

@@ -82,3 +82,17 @@ export type Clip = {
   sizeBytes: number;
   createdAt: string;
 };
+
+export type NotifChannelType = "webhook" | "ntfy" | "telegram";
+
+export type NotifChannel = {
+  id: string;
+  type: NotifChannelType;
+  name: string;
+  config: Record<string, string>;
+  minSeverity: Severity;
+  cameraIds: string[] | null;
+  cooldownSecs: number;
+  enabled: boolean;
+  createdAt: string;
+};

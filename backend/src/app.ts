@@ -7,6 +7,7 @@ import { cameraRoutes } from "./cameras/routes";
 import { alertRoutes } from "./alerts/routes";
 import { clipRoutes } from "./clips/routes";
 import { zoneRoutes, ruleRoutes } from "./rules/routes";
+import { notifyRoutes } from "./notify/routes";
 import { requireAuth } from "./auth/middleware";
 import { verifyToken } from "./auth/jwt";
 import { addConn, removeConn } from "./realtime/connections";
@@ -26,6 +27,7 @@ app.route("/cameras/:cameraId/zones", zoneRoutes);
 app.route("/cameras/:cameraId/rules", ruleRoutes);
 app.route("/alerts", alertRoutes);
 app.route("/clips", clipRoutes);
+app.route("/notifications", notifyRoutes);
 
 app.get("/me", requireAuth, (c) =>
   c.json({ id: c.get("userId"), username: c.get("username") }),

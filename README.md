@@ -68,6 +68,8 @@ recording knobs added for the clip/thumbnail feature, plus rules-engine settings
 
 **Rules & Zones:** cameras now support drawing zones and creating alert rules. Presence rules detect when objects enter a zone; tripwire rules detect line-crossing; dwell rules detect loitering. The worker uses **ByteTrack** (`supervision`) for multi-object tracking across frames to power tripwire and dwell detection.
 
+**Notifications:** alerts can be delivered to **webhook**, **ntfy**, or **Telegram** channels (configured under **Notifications** in the dashboard), with `APP_URL` set to your reachable frontend URL so alerts include a clickable link back to the dashboard.
+
 ---
 
 ## Run
