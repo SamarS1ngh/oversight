@@ -73,7 +73,7 @@ export async function sendChannel(
     };
     if (config.token) headers["Authorization"] = `Bearer ${config.token}`;
     const res = await fetch(`${server}/${config.topic}`, {
-      method: "POST", headers, body: snapshot.bytes, signal: AbortSignal.timeout(5000),
+      method: "POST", headers, body: snapshot.bytes as BodyInit, signal: AbortSignal.timeout(5000), // Bun accepts a Uint8Array body at runtime; cast satisfies the DOM lib types
     });
     return { ok: res.ok, status: res.status };
   }
@@ -82,7 +82,7 @@ export async function sendChannel(
     fd.set("chat_id", config.chatId);
     fd.set("caption", String(payload.text));
     fd.set("parse_mode", "Markdown");
-    fd.set("photo", new Blob([snapshot.bytes], { type: "image/jpeg" }), "snapshot.jpg");
+    fd.set("photo", new Blob([snapshot.bytes as BlobPart], { type: "image/jpeg" }), "snapshot.jpg");
     const res = await fetch(`https://api.telegram.org/bot${config.botToken}/sendPhoto`, {
       method: "POST", body: fd, signal: AbortSignal.timeout(5000),
     });
@@ -91,7 +91,7 @@ export async function sendChannel(
   if (snapshot && type === "pushover") {
     const fd = new FormData();
     for (const [k, v] of new URLSearchParams(buildRequest("pushover", config, payload).body)) fd.set(k, v);
-    fd.set("attachment", new Blob([snapshot.bytes], { type: "image/jpeg" }), "snapshot.jpg");
+    fd.set("attachment", new Blob([snapshot.bytes as BlobPart], { type: "image/jpeg" }), "snapshot.jpg");
     const res = await fetch("https://api.pushover.net/1/messages.json", {
       method: "POST", body: fd, signal: AbortSignal.timeout(5000),
     });
