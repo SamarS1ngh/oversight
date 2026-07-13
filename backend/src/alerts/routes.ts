@@ -1,8 +1,11 @@
 import { Hono } from "hono";
+import { join } from "path";
 import { and, desc, eq, gte, lte, getTableColumns } from "drizzle-orm";
 import { db } from "../db";
 import { alerts, cameras, clips } from "../db/schema";
 import { requireAuth } from "../auth/middleware";
+import { env } from "../env";
+import { verifySnapshotToken } from "../notify/snapshot-token";
 
 const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -73,4 +76,22 @@ alertRoutes.post("/:id/resolve", async (c) => {
   if (!owned) return c.json({ error: "not found" }, 404);
   const [updated] = await db.update(alerts).set({ status: "resolved", resolvedAt: new Date() }).where(eq(alerts.id, owned.id)).returning();
   return c.json(updated);
+});
+
+// Un-authed on purpose: external push services and <img> tags can't send a
+// Bearer header. The signed, short-lived token in the query string IS the
+// auth for this route. Kept on its own Hono instance (not `alertRoutes`) so
+// it never picks up the blanket `requireAuth` above. It reads only the
+// `snapshotPath` column for the id the token was signed for, never an
+// arbitrary path.
+export const snapshotRoutes = new Hono();
+snapshotRoutes.get("/:id/snapshot", async (c) => {
+  const id = c.req.param("id");
+  const token = c.req.query("token") ?? "";
+  if (!verifySnapshotToken(id, token, Date.now())) return c.json({ error: "forbidden" }, 403);
+  const [a] = await db.select({ p: alerts.snapshotPath }).from(alerts).where(eq(alerts.id, id)).limit(1);
+  if (!a?.p) return c.json({ error: "not found" }, 404);
+  const file = Bun.file(join(env.RECORDINGS_DIR, a.p));
+  if (!(await file.exists())) return c.json({ error: "not found" }, 404);
+  return new Response(file, { headers: { "content-type": "image/jpeg" } });
 });

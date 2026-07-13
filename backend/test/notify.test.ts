@@ -6,7 +6,11 @@ import { renderAlert } from "../src/notify/render";
 import { buildRequest } from "../src/notify/drivers";
 import { app } from "../src/app";
 import { db } from "../src/db";
-import { notificationDeliveries } from "../src/db/schema";
+import { notificationDeliveries, alerts, cameras } from "../src/db/schema";
+import { signSnapshotToken } from "../src/notify/snapshot-token";
+import { env } from "../src/env";
+import { mkdirSync, writeFileSync } from "fs";
+import { join } from "path";
 
 test("sevRank orders severities", () => {
   expect(sevRank("low")).toBe(0);
@@ -186,4 +190,32 @@ test("notification_deliveries table is queryable", async () => {
   if (!dbUp) return;
   const rows = await db.select().from(notificationDeliveries).limit(1);
   expect(Array.isArray(rows)).toBe(true);
+});
+
+// Regression guard: snapshotRoutes and alertRoutes both mount at "/alerts".
+// alertRoutes' blanket `use("*", requireAuth)` matches any /alerts/* path at
+// dispatch time (Hono composes middleware by path pattern, not by which
+// sub-router "owns" a route), so mount order controls whether the un-authed
+// snapshot handler or the auth gate wins for /alerts/:id/snapshot. app.ts
+// must mount snapshotRoutes before alertRoutes; this pins alertRoutes' own
+// paths to still 401 without a Bearer token.
+test("alertRoutes still requires auth for its own paths", async () => {
+  expect((await call("/alerts")).status).toBe(401);
+});
+
+test("snapshot route serves the jpeg for a valid token, 403/404 otherwise", async () => {
+  if (!dbUp) return;
+  const a = await nuser();
+  const cam = await (await a(`/cameras`, json({ name: "snapcam", rtsp_url: "rtsp://x" }))).json();
+  const alertId = "33333333-3333-3333-3333-333333333331";
+  const rel = `snapshots/${cam.id}/${alertId}.jpg`;
+  mkdirSync(join(env.RECORDINGS_DIR, "snapshots", cam.id), { recursive: true });
+  writeFileSync(join(env.RECORDINGS_DIR, rel), Buffer.from([0xff, 0xd8, 0xff, 0xd9]));
+  await db.insert(alerts).values({ id: alertId, cameraId: cam.id, ts: new Date(), confidence: 0.9, count: 1, snapshotPath: rel }).onConflictDoNothing();
+  const good = signSnapshotToken(alertId, Date.now());
+  const ok = await call(`/alerts/${alertId}/snapshot?token=${good}`);
+  expect(ok.status).toBe(200);
+  expect(ok.headers.get("content-type")).toBe("image/jpeg");
+  expect((await call(`/alerts/${alertId}/snapshot?token=bad`)).status).toBe(403);
+  expect((await call(`/alerts/00000000-0000-0000-0000-000000000000/snapshot?token=${signSnapshotToken("00000000-0000-0000-0000-000000000000", Date.now())}`)).status).toBe(404);
 });
