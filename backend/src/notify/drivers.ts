@@ -20,6 +20,15 @@ export function buildRequest(type: string, config: any, payload: any): OutReq {
     if (config.token) headers["Authorization"] = `Bearer ${config.token}`;
     return { url: `${server}/${config.topic}`, method: "POST", headers, body: String(payload.body) };
   }
+  if (type === "pushover") {
+    const body = new URLSearchParams({
+      token: config.token, user: config.user,
+      title: String(payload.title), message: String(payload.message),
+      priority: String(payload.priority), url: String(payload.url),
+    });
+    return { url: "https://api.pushover.net/1/messages.json", method: "POST",
+      headers: { "content-type": "application/x-www-form-urlencoded" }, body: body.toString() };
+  }
   // telegram
   return {
     url: `https://api.telegram.org/bot${config.botToken}/sendMessage`,

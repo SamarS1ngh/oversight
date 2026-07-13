@@ -8,7 +8,7 @@ import { buildRequest, send } from "./drivers";
 import { env } from "../env";
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-const TYPES = ["webhook", "ntfy", "telegram"];
+const TYPES = ["webhook", "ntfy", "telegram", "pushover"];
 const SEVERITIES = ["low", "medium", "high"];
 
 export async function ownedChannel(userId: string, id: string) {
@@ -33,6 +33,7 @@ export function validateChannel(b: any): string | null {
   if (b.type === "webhook" && !cfg.url) return "webhook config needs a url";
   if (b.type === "ntfy" && !cfg.topic) return "ntfy config needs a topic";
   if (b.type === "telegram" && (!cfg.botToken || !cfg.chatId)) return "telegram config needs botToken + chatId";
+  if (b.type === "pushover" && (!cfg.token || !cfg.user)) return "pushover config needs token + user";
   return null;
 }
 

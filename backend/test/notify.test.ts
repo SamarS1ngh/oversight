@@ -100,6 +100,30 @@ test("buildRequest telegram posts to the bot sendMessage with chat_id", () => {
   expect(b.text).toBe("hi");
 });
 
+test("renderAlert pushover maps severity to priority + carries url", () => {
+  const p: any = renderAlert("pushover", ALERT, "Driveway", "Night", LINK);
+  expect(p.priority).toBe(1); // high
+  expect(p.url).toBe(LINK);
+  expect(p.title).toContain("Driveway");
+});
+
+test("buildRequest pushover posts a form to the messages API", () => {
+  const r = buildRequest("pushover", { token: "APP", user: "USR" }, { title: "T", message: "M", priority: 1, url: LINK });
+  expect(r.url).toBe("https://api.pushover.net/1/messages.json");
+  expect(r.headers["content-type"]).toContain("application/x-www-form-urlencoded");
+  const body = new URLSearchParams(r.body);
+  expect(body.get("token")).toBe("APP");
+  expect(body.get("user")).toBe("USR");
+  expect(body.get("priority")).toBe("1");
+});
+
+test("validateChannel: pushover needs token + user", async () => {
+  if (!dbUp) return;
+  const a = await nuser();
+  expect((await a(`/notifications`, json({ type: "pushover", name: "po", config: { token: "x" } }))).status).toBe(400);
+  expect((await a(`/notifications`, json({ type: "pushover", name: "po", config: { token: "x", user: "y" } }))).status).toBe(201);
+});
+
 // Integration tests against a live Postgres. They self-skip if no DB is
 // reachable, so `bun test` still passes the unit suite without infra.
 // To run these: have the compose Postgres up and

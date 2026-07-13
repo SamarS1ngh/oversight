@@ -36,6 +36,16 @@ export function renderAlert(
       click: link,
     };
   }
+  if (type === "pushover") {
+    const PO: Record<string, number> = { low: -1, medium: 0, high: 1 };
+    const time = new Date(alert.ts).toLocaleString();
+    return {
+      title: `${cameraName}: ${sev} ${label}`,
+      message: `${rule} · ${alert.count} · ${time}`,
+      priority: PO[sev] ?? 0,
+      url: link,
+    };
+  }
   // telegram
   const time = new Date(alert.ts).toLocaleString();
   return {
