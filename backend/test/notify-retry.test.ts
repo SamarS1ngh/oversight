@@ -42,6 +42,25 @@ test("a failing send bumps attempts + backoff, dead at 5", async () => {
   expect(dead.attempts).toBeGreaterThanOrEqual(5);
 });
 
+test("terminal rows past the retention window are pruned; recent ones survive", async () => {
+  if (!dbUp) return;
+  const ch = await seedChannel();
+  const payload = { type: "webhook", config: ch.config, alert: { id: "a4", camera_id: "c", ts: new Date().toISOString(), count: 1, confidence: 1, severity: "low" }, cameraName: "c", ruleName: null, link: "http://l" };
+  const [old] = await db.insert(notificationDeliveries).values({
+    channelId: ch.id, alertId: null, payload, attempts: 1,
+    nextAttemptAt: new Date(0), status: "sent", createdAt: new Date(0),
+  }).returning();
+  const [recent] = await db.insert(notificationDeliveries).values({
+    channelId: ch.id, alertId: null, payload, attempts: 1,
+    nextAttemptAt: new Date(0), status: "sent", createdAt: new Date(),
+  }).returning();
+  await sweepOnce(Date.now(), async () => ({ ok: true, status: 200 }));
+  const [afterOld] = await db.select().from(notificationDeliveries).where(eq(notificationDeliveries.id, old.id));
+  const [afterRecent] = await db.select().from(notificationDeliveries).where(eq(notificationDeliveries.id, recent.id));
+  expect(afterOld).toBeUndefined();
+  expect(afterRecent).toBeDefined();
+});
+
 test("a stuck 'sending' row past its lease is reclaimed and re-sent", async () => {
   if (!dbUp) return;
   const ch = await seedChannel();

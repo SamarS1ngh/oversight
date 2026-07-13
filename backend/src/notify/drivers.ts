@@ -95,7 +95,8 @@ export async function sendChannel(
   if (snapshot && type === "telegram") {
     const fd = new FormData();
     fd.set("chat_id", config.chatId);
-    fd.set("caption", String(payload.text));
+    // Telegram's sendPhoto caption is capped at 1024 chars; a longer one fails the send.
+    fd.set("caption", String(payload.text).slice(0, 1024));
     fd.set("parse_mode", "Markdown");
     fd.set("photo", new Blob([snapshot.bytes as BlobPart], { type: "image/jpeg" }), "snapshot.jpg");
     const res = await fetch(`https://api.telegram.org/bot${config.botToken}/sendPhoto`, {

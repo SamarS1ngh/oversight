@@ -1,4 +1,4 @@
-import { and, eq, inArray, lte } from "drizzle-orm";
+import { and, eq, inArray, lt, lte } from "drizzle-orm";
 import { promises as fs } from "fs";
 import { join } from "path";
 import { db } from "../db";
@@ -14,6 +14,9 @@ export function nextDelayMs(attempts: number): number { return BACKOFF[Math.min(
 // tick. If the process crashes mid-send, the row self-heals — it becomes due again
 // once this lease lapses, instead of being stuck at 'sending' forever.
 const CLAIM_LEASE_MS = 120_000;
+// terminal (sent/dead) rows are kept around for a week for debugging/audit, then
+// pruned so the table doesn't grow unbounded.
+const DELIVERY_RETENTION_MS = 7 * 24 * 3600_000;
 
 export async function enqueueFailure(channelId: string, alertId: string | null, inputs: any, errMsg: string, nowMs: number): Promise<void> {
   // attempts: 1 records the inline send that already failed. The queued
@@ -47,6 +50,11 @@ async function scheduleRetry(rowId: string, attempts: number, nowMs: number, err
 }
 
 export async function sweepOnce(nowMs: number, sender: Sender = realSend): Promise<void> {
+  // prune old terminal rows first so the table doesn't grow unbounded.
+  await db.delete(notificationDeliveries)
+    .where(and(inArray(notificationDeliveries.status, ["sent", "dead"]), lt(notificationDeliveries.createdAt, new Date(nowMs - DELIVERY_RETENTION_MS))))
+    .catch(() => {});
+
   // due = pending rows ready to send, PLUS 'sending' rows whose claim lease has
   // lapsed (crashed mid-send) — both are eligible for (re)claim.
   const due = await db.select().from(notificationDeliveries)
