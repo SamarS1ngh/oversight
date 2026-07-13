@@ -144,3 +144,20 @@ test("validation: bad type / missing per-type config / bad severity", async () =
   expect((await a(`/notifications`, json({ type: "telegram", name: "x", config: { botToken: "b" } }))).status).toBe(400); // no chatId
   expect((await a(`/notifications`, json({ type: "ntfy", name: "x", config: { topic: "t" }, minSeverity: "urgent" }))).status).toBe(400);
 });
+
+test("POST /notifications/:id/test delivers to a webhook", async () => {
+  if (!dbUp) return;
+  const a = await nuser();
+  // a local server that captures the POST
+  let received: any = null;
+  const server = Bun.serve({ port: 0, async fetch(req) { received = await req.json(); return new Response("ok"); } });
+  const url = `http://127.0.0.1:${server.port}/hook`;
+  const ch = await (await a(`/notifications`, json({ type: "webhook", name: "hook", config: { url } }))).json();
+  const res = await a(`/notifications/${ch.id}/test`, { method: "POST" });
+  expect(res.status).toBe(200);
+  const body = await res.json();
+  expect(body.ok).toBe(true);
+  expect(received?.event).toBe("alert");
+  expect(received?.alert?.severity).toBe("high");
+  server.stop();
+});

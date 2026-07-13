@@ -1,8 +1,11 @@
 import { Hono } from "hono";
 import { and, desc, eq } from "drizzle-orm";
 import { db } from "../db";
-import { notificationChannels } from "../db/schema";
+import { notificationChannels, cameras } from "../db/schema";
 import { requireAuth } from "../auth/middleware";
+import { renderAlert } from "./render";
+import { buildRequest, send } from "./drivers";
+import { env } from "../env";
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const TYPES = ["webhook", "ntfy", "telegram"];
@@ -90,4 +93,21 @@ notifyRoutes.delete("/:id", async (c) => {
   if (!cur) return c.json({ error: "not found" }, 404);
   await db.delete(notificationChannels).where(eq(notificationChannels.id, cur.id));
   return c.body(null, 204);
+});
+
+notifyRoutes.post("/:id/test", async (c) => {
+  const ch = await ownedChannel(c.get("userId"), c.req.param("id"));
+  if (!ch) return c.json({ error: "not found" }, 404);
+  const [cam] = await db.select({ id: cameras.id, name: cameras.name }).from(cameras)
+    .where(eq(cameras.userId, c.get("userId"))).limit(1);
+  const cameraId = cam?.id ?? "00000000-0000-0000-0000-000000000000";
+  const synthetic = { id: "test", severity: "high", label: "test", rule_id: null, camera_id: cameraId, ts: new Date().toISOString(), count: 1, confidence: 1 };
+  const link = `${env.APP_URL}/events?camera=${cameraId}`;
+  try {
+    const payload = renderAlert(ch.type, synthetic, cam?.name ?? "test camera", "test", link);
+    const res = await send(buildRequest(ch.type, ch.config, payload));
+    return c.json({ ok: res.ok, status: res.status });
+  } catch (e) {
+    return c.json({ ok: false, error: (e as Error).message }, 200);
+  }
 });
