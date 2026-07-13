@@ -145,6 +145,25 @@ test("validation: bad type / missing per-type config / bad severity", async () =
   expect((await a(`/notifications`, json({ type: "ntfy", name: "x", config: { topic: "t" }, minSeverity: "urgent" }))).status).toBe(400);
 });
 
+test("validation: non-string name / NaN cooldown / non-boolean enabled → 400 not 500", async () => {
+  if (!dbUp) return;
+  const a = await nuser();
+  // name a number would throw on .trim() without the typeof guard (500)
+  expect((await a(`/notifications`, json({ type: "webhook", name: 42, config: { url: "http://h" } }))).status).toBe(400);
+  // NaN passes a naive `typeof === number && >= 0` check
+  expect((await a(`/notifications`, json({ type: "webhook", name: "x", config: { url: "http://h" }, cooldownSecs: NaN }))).status).toBe(400);
+  // non-boolean enabled would be written raw to a boolean column
+  expect((await a(`/notifications`, json({ type: "webhook", name: "x", config: { url: "http://h" }, enabled: "yes" }))).status).toBe(400);
+});
+
+test("PATCH re-validates the merged channel (non-boolean enabled → 400)", async () => {
+  if (!dbUp) return;
+  const a = await nuser();
+  const ch = await (await a(`/notifications`, json({ type: "webhook", name: "h", config: { url: "http://h" } }))).json();
+  const bad = await a(`/notifications/${ch.id}`, { ...json({ enabled: "nope" }), method: "PATCH" });
+  expect(bad.status).toBe(400);
+});
+
 test("POST /notifications/:id/test delivers to a webhook", async () => {
   if (!dbUp) return;
   const a = await nuser();

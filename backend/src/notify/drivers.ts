@@ -30,7 +30,14 @@ export function buildRequest(type: string, config: any, payload: any): OutReq {
 }
 
 // Thin real sender — not unit-tested (exercised by the routes capture test + e2e).
+// 5s timeout so a hung endpoint can't stall the dispatch loop's sibling
+// channels or leak a never-settling fetch under continuous detections.
 export async function send(req: OutReq): Promise<{ ok: boolean; status: number }> {
-  const res = await fetch(req.url, { method: req.method, headers: req.headers, body: req.body });
+  const res = await fetch(req.url, {
+    method: req.method,
+    headers: req.headers,
+    body: req.body,
+    signal: AbortSignal.timeout(5000),
+  });
   return { ok: res.ok, status: res.status };
 }

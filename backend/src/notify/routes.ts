@@ -23,10 +23,11 @@ export async function ownedChannel(userId: string, id: string) {
 
 // null if valid, else an error string.
 export function validateChannel(b: any): string | null {
-  if (!b?.name?.trim()) return "name required";
+  if (typeof b?.name !== "string" || !b.name.trim()) return "name required";
   if (!TYPES.includes(b.type)) return "type must be webhook|ntfy|telegram";
   if (b.minSeverity !== undefined && !SEVERITIES.includes(b.minSeverity)) return "minSeverity must be low|medium|high";
-  if (b.cooldownSecs !== undefined && (typeof b.cooldownSecs !== "number" || b.cooldownSecs < 0)) return "cooldownSecs must be >= 0";
+  if (b.cooldownSecs !== undefined && (typeof b.cooldownSecs !== "number" || !Number.isFinite(b.cooldownSecs) || b.cooldownSecs < 0)) return "cooldownSecs must be a finite number >= 0";
+  if (b.enabled !== undefined && typeof b.enabled !== "boolean") return "enabled must be a boolean";
   if (b.cameraIds !== undefined && b.cameraIds !== null && !(Array.isArray(b.cameraIds) && b.cameraIds.every((x: any) => typeof x === "string"))) return "cameraIds must be null or string[]";
   const cfg = b.config ?? {};
   if (b.type === "webhook" && !cfg.url) return "webhook config needs a url";
@@ -76,6 +77,7 @@ notifyRoutes.patch("/:id", async (c) => {
     minSeverity: "minSeverity" in b ? b.minSeverity : cur.minSeverity,
     cooldownSecs: "cooldownSecs" in b ? b.cooldownSecs : cur.cooldownSecs,
     cameraIds: "cameraIds" in b ? b.cameraIds : cur.cameraIds,
+    enabled: "enabled" in b ? b.enabled : cur.enabled,
   };
   const err = validateChannel(merged);
   if (err) return c.json({ error: err }, 400);
