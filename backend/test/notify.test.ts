@@ -6,6 +6,11 @@ import { renderAlert } from "../src/notify/render";
 import { buildRequest } from "../src/notify/drivers";
 import { app } from "../src/app";
 import { db } from "../src/db";
+import { notificationDeliveries, alerts, cameras } from "../src/db/schema";
+import { signSnapshotToken } from "../src/notify/snapshot-token";
+import { env } from "../src/env";
+import { mkdirSync, writeFileSync } from "fs";
+import { join } from "path";
 
 test("sevRank orders severities", () => {
   expect(sevRank("low")).toBe(0);
@@ -95,6 +100,52 @@ test("buildRequest telegram posts to the bot sendMessage with chat_id", () => {
   expect(b.text).toBe("hi");
 });
 
+test("renderAlert webpush yields title/body/click", () => {
+  const p: any = renderAlert("webpush", ALERT, "Cam", "R", LINK);
+  expect(p.title).toContain("Cam"); expect(p.click).toBe(LINK);
+});
+
+test("renderAlert pushover maps severity to priority + carries url", () => {
+  const p: any = renderAlert("pushover", ALERT, "Driveway", "Night", LINK);
+  expect(p.priority).toBe(1); // high
+  expect(p.url).toBe(LINK);
+  expect(p.title).toContain("Driveway");
+});
+
+test("buildRequest pushover posts a form to the messages API", () => {
+  const r = buildRequest("pushover", { token: "APP", user: "USR" }, { title: "T", message: "M", priority: 1, url: LINK });
+  expect(r.url).toBe("https://api.pushover.net/1/messages.json");
+  expect(r.headers["content-type"]).toContain("application/x-www-form-urlencoded");
+  const body = new URLSearchParams(r.body);
+  expect(body.get("token")).toBe("APP");
+  expect(body.get("user")).toBe("USR");
+  expect(body.get("priority")).toBe("1");
+});
+
+test("ntfy send uploads snapshot bytes as the body when a snapshot exists", async () => {
+  const { sendChannel } = await import("../src/notify/drivers");
+  let gotBody: ArrayBuffer | null = null; let title: string | null = null;
+  const server = Bun.serve({ port: 0, async fetch(req) { title = req.headers.get("Title"); gotBody = await req.arrayBuffer(); return new Response("ok"); } });
+  const payload: any = { title: "T", body: "B", priority: 5, tags: ["high"], click: "http://l" };
+  const bytes = new Uint8Array([1, 2, 3, 4]);
+  const res = await sendChannel("ntfy", { server: `http://127.0.0.1:${server.port}`, topic: "t" }, payload, { bytes, url: "http://snap" });
+  expect(res.ok).toBe(true);
+  expect(new Uint8Array(gotBody!)).toEqual(bytes);
+  expect(title).toBe("T");
+  server.stop();
+});
+test("webhook payload gains snapshotUrl when a snapshot exists", () => {
+  const p: any = renderAlert("webhook", ALERT, "Cam", "R", LINK, "http://snap/x.jpg");
+  expect(p.snapshotUrl).toBe("http://snap/x.jpg");
+});
+
+test("validateChannel: pushover needs token + user", async () => {
+  if (!dbUp) return;
+  const a = await nuser();
+  expect((await a(`/notifications`, json({ type: "pushover", name: "po", config: { token: "x" } }))).status).toBe(400);
+  expect((await a(`/notifications`, json({ type: "pushover", name: "po", config: { token: "x", user: "y" } }))).status).toBe(201);
+});
+
 // Integration tests against a live Postgres. They self-skip if no DB is
 // reachable, so `bun test` still passes the unit suite without infra.
 // To run these: have the compose Postgres up and
@@ -179,4 +230,50 @@ test("POST /notifications/:id/test delivers to a webhook", async () => {
   expect(received?.event).toBe("alert");
   expect(received?.alert?.severity).toBe("high");
   server.stop();
+});
+
+test("POST /:id/test on a webpush channel routes through sendChannel (not the telegram default)", async () => {
+  if (!dbUp) return;
+  const a = await nuser();
+  const ch = await (await a(`/notifications`, json({ type: "webpush", name: "b", config: { endpoint: "https://push.example/x", p256dh: "BPabc", auth: "xyz" } }))).json();
+  const res = await a(`/notifications/${ch.id}/test`, { method: "POST" });
+  expect(res.status).toBe(200);
+  const body = await res.json();
+  expect(body.ok).toBe(false);
+  // proves it hit the webpush branch (VAPID unset → web-push throws) rather than building a telegram request
+  expect(String(body.error ?? "")).toMatch(/vapid|public|key/i);
+});
+
+test("notification_deliveries table is queryable", async () => {
+  if (!dbUp) return;
+  const rows = await db.select().from(notificationDeliveries).limit(1);
+  expect(Array.isArray(rows)).toBe(true);
+});
+
+// Regression guard: snapshotRoutes and alertRoutes both mount at "/alerts".
+// alertRoutes' blanket `use("*", requireAuth)` matches any /alerts/* path at
+// dispatch time (Hono composes middleware by path pattern, not by which
+// sub-router "owns" a route), so mount order controls whether the un-authed
+// snapshot handler or the auth gate wins for /alerts/:id/snapshot. app.ts
+// must mount snapshotRoutes before alertRoutes; this pins alertRoutes' own
+// paths to still 401 without a Bearer token.
+test("alertRoutes still requires auth for its own paths", async () => {
+  expect((await call("/alerts")).status).toBe(401);
+});
+
+test("snapshot route serves the jpeg for a valid token, 403/404 otherwise", async () => {
+  if (!dbUp) return;
+  const a = await nuser();
+  const cam = await (await a(`/cameras`, json({ name: "snapcam", rtsp_url: "rtsp://x" }))).json();
+  const alertId = "33333333-3333-3333-3333-333333333331";
+  const rel = `snapshots/${cam.id}/${alertId}.jpg`;
+  mkdirSync(join(env.RECORDINGS_DIR, "snapshots", cam.id), { recursive: true });
+  writeFileSync(join(env.RECORDINGS_DIR, rel), Buffer.from([0xff, 0xd8, 0xff, 0xd9]));
+  await db.insert(alerts).values({ id: alertId, cameraId: cam.id, ts: new Date(), confidence: 0.9, count: 1, snapshotPath: rel }).onConflictDoNothing();
+  const good = signSnapshotToken(alertId, Date.now());
+  const ok = await call(`/alerts/${alertId}/snapshot?token=${good}`);
+  expect(ok.status).toBe(200);
+  expect(ok.headers.get("content-type")).toBe("image/jpeg");
+  expect((await call(`/alerts/${alertId}/snapshot?token=bad`)).status).toBe(403);
+  expect((await call(`/alerts/00000000-0000-0000-0000-000000000000/snapshot?token=${signSnapshotToken("00000000-0000-0000-0000-000000000000", Date.now())}`)).status).toBe(404);
 });

@@ -11,4 +11,12 @@ export const env = {
   RETENTION_DAYS: Number(process.env.RETENTION_DAYS ?? 7),
   MAX_STORAGE_GB: Number(process.env.MAX_STORAGE_GB ?? 10),
   APP_URL: process.env.APP_URL ?? "http://localhost:3000",
+  // Backend's externally-reachable base URL. Used to build snapshot URLs that
+  // a webhook receiver / push service / browser fetches — those hit the backend
+  // route `/alerts/:id/snapshot`, NOT the frontend (APP_URL). In a single-origin
+  // reverse-proxy deploy, set this to the same origin as APP_URL.
+  PUBLIC_API_URL: process.env.PUBLIC_API_URL ?? "http://localhost:8080",
+  VAPID_PUBLIC_KEY: process.env.VAPID_PUBLIC_KEY ?? "",
+  VAPID_PRIVATE_KEY: process.env.VAPID_PRIVATE_KEY ?? "",
+  VAPID_SUBJECT: process.env.VAPID_SUBJECT ?? "mailto:admin@example.com",
 };

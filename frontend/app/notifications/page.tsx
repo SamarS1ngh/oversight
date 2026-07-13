@@ -4,14 +4,21 @@ import { useRouter } from "next/navigation";
 import { api, getToken } from "@/lib/api";
 import type { Camera, NotifChannel } from "@/lib/types";
 
-const TYPES = ["webhook", "ntfy", "telegram"] as const;
+const TYPES = ["webhook", "ntfy", "telegram", "pushover"] as const;
 const empty = { type: "ntfy", name: "", config: {} as Record<string, string>, minSeverity: "low", cameraIds: null as string[] | null, cooldownSecs: 60, enabled: true };
 
 const CONFIG_FIELDS: Record<string, string[]> = {
   webhook: ["url"],
   ntfy: ["topic", "server", "token"],
   telegram: ["botToken", "chatId"],
+  pushover: ["token", "user"],
 };
+
+function urlB64ToUint8(s: string) {
+  const pad = "=".repeat((4 - (s.length % 4)) % 4);
+  const b = atob((s + pad).replace(/-/g, "+").replace(/_/g, "/"));
+  return Uint8Array.from([...b].map((c) => c.charCodeAt(0)));
+}
 
 export default function NotificationsPage() {
   const router = useRouter();
@@ -47,6 +54,25 @@ export default function NotificationsPage() {
   }
   const setCfg = (k: string, v: string) => setForm((f: any) => ({ ...f, config: { ...f.config, [k]: v } }));
 
+  async function enablePush() {
+    setErr(null);
+    try {
+      if (!("serviceWorker" in navigator)) throw new Error("no service worker support");
+      const reg = await navigator.serviceWorker.register("/sw.js");
+      const { key } = await api.vapidPublicKey();
+      if (!key) throw new Error("web push not configured on the server (set VAPID env)");
+      const sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: urlB64ToUint8(key) });
+      const j = sub.toJSON();
+      if (!j.endpoint || !j.keys?.p256dh || !j.keys?.auth) throw new Error("subscription missing endpoint/keys");
+      await api.createChannel({
+        type: "webpush", name: "This browser",
+        config: { endpoint: j.endpoint, p256dh: j.keys.p256dh, auth: j.keys.auth },
+        minSeverity: "low", cameraIds: null, cooldownSecs: 60, enabled: true,
+      });
+      load();
+    } catch (e: any) { setErr(e.message); }
+  }
+
   return (
     <main className="dash">
       <header className="topbar">
@@ -69,6 +95,7 @@ export default function NotificationsPage() {
         ))}
       </div>
       <hr />
+      <button className="btn" onClick={enablePush}>Enable push on this browser</button>
       <div className="rule-form">
         <select value={form.type} onChange={(e) => setForm({ ...form, type: e.target.value, config: {} })}>
           {TYPES.map((t) => <option key={t} value={t}>{t}</option>)}

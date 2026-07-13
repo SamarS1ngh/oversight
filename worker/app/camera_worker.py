@@ -19,7 +19,7 @@ from .config import (
     CONF_THRESHOLD,
     TZ,
 )
-from .events import detection_event, stats_event, state_event
+from .events import detection_event, snapshot_rel, stats_event, state_event
 from .recorder import Recorder
 from .rules import evaluate as evaluate_rules
 from .tracking_rules import evaluate_tracking, bottom_center
@@ -30,6 +30,15 @@ log = logging.getLogger("camera")
 
 def _now_ms() -> float:
     return time.monotonic() * 1000.0
+
+
+def _default_snapshot_writer(full_path, bgr):
+    import cv2, os
+    os.makedirs(os.path.dirname(full_path), exist_ok=True)
+    h, w = bgr.shape[:2]
+    if w > 640:
+        bgr = cv2.resize(bgr, (640, int(h * 640 / w)))  # keep the push payload small
+    cv2.imwrite(full_path, bgr, [cv2.IMWRITE_JPEG_QUALITY, 70])
 
 
 class DetectionVideoTrack(VideoStreamTrack):
@@ -91,6 +100,7 @@ class CameraWorker:
         self.tracker = ByteTrackTracker()
         self._dwell_state: dict = {}
         self._last_center: dict = {}
+        self._snapshot_writer = _default_snapshot_writer
 
     # ---------- lifecycle ----------
     def start(self) -> None:
@@ -251,7 +261,7 @@ class CameraWorker:
             except Exception:
                 pass
 
-    def _emit_one(self, m, w, h) -> str:
+    def _emit_one(self, m, w, h, frame) -> str:
         payload = detection_event(
             self.camera_id, m.confidence, m.count,
             [
@@ -262,6 +272,13 @@ class CameraWorker:
             w, h, WORKER_ID,
             label=m.label, rule_id=m.rule_id, severity=m.severity,
         )
+        import os
+        rel = snapshot_rel(self.camera_id, payload["id"])
+        try:
+            self._snapshot_writer(os.path.join(RECORDINGS_DIR, rel), frame)
+            payload["snapshot_path"] = rel
+        except Exception:
+            log.exception("snapshot write failed: %s", self.camera_id)
         self._evq.put(("detections", payload))
         return payload["id"]
 
@@ -298,12 +315,12 @@ class CameraWorker:
             key = f"{self.camera_id}:{m.rule_id or ''}"
             if not self.limiter.should_emit(key, m.count, now_ms):
                 continue
-            eid = self._emit_one(m, w, h)
+            eid = self._emit_one(m, w, h, annotated)
             first_emitted_id = first_emitted_id or eid
 
         # tracking: bypass the count dedup (episodic, self-limiting)
         for m in tracking_matches:
-            eid = self._emit_one(m, w, h)
+            eid = self._emit_one(m, w, h, annotated)
             first_emitted_id = first_emitted_id or eid
 
         if first_emitted_id is not None:

@@ -6,6 +6,7 @@ import { alerts, cameras, clips } from "../db/schema";
 import { ownerOf, sendToUser } from "./connections";
 import { handleAnswer } from "./signaling";
 import { dispatchNotifications } from "../notify/dispatch";
+import { safeSnapshotPath } from "../notify/snapshot-url";
 
 // Subscribes to everything the worker emits and (a) persists alerts, (b) keeps
 // camera.status in sync, (c) fans events out to the owning user's WebSockets,
@@ -57,6 +58,7 @@ async function onDetection(d: any) {
         label: d.label ?? null,
         ruleId: d.rule_id ?? null,
         severity: d.severity ?? "low",
+        snapshotPath: safeSnapshotPath(d.snapshot_path),
       })
       .onConflictDoNothing();
   } catch (e) {

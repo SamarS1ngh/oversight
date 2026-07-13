@@ -10,6 +10,7 @@ export function renderAlert(
   cameraName: string,
   ruleName: string | null,
   link: string,
+  snapshotUrl?: string | null,
 ): Record<string, unknown> {
   const sev = alert.severity ?? "low";
   const label = alert.label ?? "detection";
@@ -25,6 +26,7 @@ export function renderAlert(
       camera: { id: alert.camera_id, name: cameraName },
       rule: alert.rule_id ? { id: alert.rule_id, name: ruleName } : null,
       url: link,
+      snapshotUrl: snapshotUrl ?? null,
     };
   }
   if (type === "ntfy") {
@@ -34,6 +36,23 @@ export function renderAlert(
       priority: NTFY_PRIORITY[sev] ?? 3,
       tags: [sev],
       click: link,
+    };
+  }
+  if (type === "webpush") {
+    return {
+      title: `${cameraName}: ${sev} ${label}`,
+      body: `${rule} · ${alert.count}`,
+      click: link,
+    };
+  }
+  if (type === "pushover") {
+    const PO: Record<string, number> = { low: -1, medium: 0, high: 1 };
+    const time = new Date(alert.ts).toLocaleString();
+    return {
+      title: `${cameraName}: ${sev} ${label}`,
+      message: `${rule} · ${alert.count} · ${time}`,
+      priority: PO[sev] ?? 0,
+      url: link,
     };
   }
   // telegram

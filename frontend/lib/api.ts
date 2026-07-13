@@ -102,6 +102,7 @@ export const api = {
     req(`/notifications/${id}`, { method: "PATCH", body: JSON.stringify(body) }),
   deleteChannel: (id: string) => req(`/notifications/${id}`, { method: "DELETE" }),
   testChannel: (id: string) => req(`/notifications/${id}/test`, { method: "POST" }),
+  vapidPublicKey: () => req("/notifications/vapid-public-key"),
 };
 
 export function clipVideoUrl(id: string) {

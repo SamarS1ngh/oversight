@@ -83,7 +83,7 @@ export type Clip = {
   createdAt: string;
 };
 
-export type NotifChannelType = "webhook" | "ntfy" | "telegram";
+export type NotifChannelType = "webhook" | "ntfy" | "telegram" | "pushover" | "webpush";
 
 export type NotifChannel = {
   id: string;

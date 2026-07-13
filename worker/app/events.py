@@ -1,9 +1,14 @@
+import os
 import uuid
 from datetime import datetime, timezone
 
 
 def now_iso() -> str:
     return datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+
+
+def snapshot_rel(camera_id: str, detection_id: str) -> str:
+    return os.path.join("snapshots", camera_id, f"{detection_id}.jpg")
 
 
 def detection_event(
@@ -18,6 +23,7 @@ def detection_event(
     rule_id: str | None = None,
     severity: str = "low",
     ts: str | None = None,
+    snapshot_path: str | None = None,
 ) -> dict:
     """Detection event — matches §2 of docs/EVENT_FORMAT.md."""
     return {
@@ -34,6 +40,7 @@ def detection_event(
         "frame_w": frame_w,
         "frame_h": frame_h,
         "worker_id": worker_id,
+        "snapshot_path": snapshot_path,
     }
 
 
