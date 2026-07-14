@@ -30,6 +30,8 @@ export const cameras = pgTable("cameras", {
   enabled: boolean("enabled").notNull().default(true),
   // last known runtime state, mirrors the worker: stopped|connecting|live|error
   status: text("status").notNull().default("stopped"),
+  lastSeenAt: timestamp("last_seen_at", { withTimezone: true }),
+  notifyOnOffline: boolean("notify_on_offline").notNull().default(false),
   createdAt: timestamp("created_at", { withTimezone: true })
     .notNull()
     .defaultNow(),
