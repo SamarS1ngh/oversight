@@ -220,6 +220,11 @@ class CameraWorker:
                 stream = container.streams.video[0]
             except Exception as e:
                 log.warning("rtsp open failed: %s (%s)", self.camera_id, str(e)[:120])
+                if container is not None:
+                    try:
+                        container.close()
+                    except Exception:
+                        pass
                 if rc.on_drop(time.monotonic()):
                     self._push_state(rc.state)
                 self._backoff_wait(rc)
@@ -291,10 +296,10 @@ class CameraWorker:
 
                 self.latest_frame = VideoFrame.from_ndarray(annotated, format="bgr24")
 
-                rc.on_frame(time.monotonic())
-                self._last_frame_iso = now_iso()
                 if rc.is_stalled(time.monotonic()):
                     raise RuntimeError("stall")
+                rc.on_frame(time.monotonic())
+                self._last_frame_iso = now_iso()
 
             # buffer/record the compressed packet AFTER decoding it, so any
             # timestamp rebasing during muxing can't disturb the decoder.
