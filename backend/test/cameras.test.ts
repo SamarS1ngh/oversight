@@ -33,6 +33,15 @@ async function nuser() {
   return (p: string, o: RequestInit = {}) => call(p, { ...o, headers: { ...(o.headers ?? {}), Authorization: `Bearer ${token}` } });
 }
 
+test("PATCH /cameras/:id toggles notifyOnOffline", async () => {
+  if (!dbUp) return;
+  const a = await nuser();
+  const cam = await (await a(`/cameras`, json({ name: "C2", rtsp_url: "rtsp://x" }))).json();
+  expect(cam.notifyOnOffline).toBe(false);
+  const upd = await (await a(`/cameras/${cam.id}`, { ...json({ notify_on_offline: true }), method: "PATCH" })).json();
+  expect(upd.notifyOnOffline).toBe(true);
+});
+
 test("applyCameraState: offline transition on an opted-in camera dispatches; opted-out does not", async () => {
   if (!dbUp) return;
   const a = await nuser();
