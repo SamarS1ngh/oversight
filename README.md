@@ -70,6 +70,8 @@ recording knobs added for the clip/thumbnail feature, plus rules-engine settings
 
 **Notifications (M3b):** alerts are delivered to **webhook**, **ntfy**, **Telegram**, **Pushover**, and **web push** channels (configured under **Notifications** in the dashboard). All notification payloads include a snapshot image from the detection frame — uploaded directly to ntfy/Telegram/Pushover services, or embedded as a signed URL (reachable via token auth) for webhook and web-push clients. Web push requires VAPID keys (set `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, `VAPID_SUBJECT` in `.env` — generate them with `bun run backend/scripts/gen-vapid.ts`) and works on HTTPS or `localhost` (service worker requirement). Failed notification sends are automatically retried by a background queue; delivery status is tracked in the `notification_deliveries` table.
 
+**Camera Health (M4a):** cameras automatically reconnect with exponential backoff when the stream stalls or fails. A camera is marked `offline` after `OFFLINE_GRACE_S` of no frames. Each camera card displays its reconnecting/offline status, time since last frame, and reconnect count. Enable the per-camera **Notify if offline** toggle to send offline/recovery notifications via your configured M3 channels.
+
 ---
 
 ## Run

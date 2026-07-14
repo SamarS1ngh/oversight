@@ -28,7 +28,7 @@ export const cameras = pgTable("cameras", {
   rtspUrl: text("rtsp_url").notNull(),
   location: text("location"),
   enabled: boolean("enabled").notNull().default(true),
-  // last known runtime state, mirrors the worker: stopped|connecting|live|error
+  // last known runtime state, mirrors the worker: stopped|connecting|live|reconnecting|offline
   status: text("status").notNull().default("stopped"),
   lastSeenAt: timestamp("last_seen_at", { withTimezone: true }),
   notifyOnOffline: boolean("notify_on_offline").notNull().default(false),
