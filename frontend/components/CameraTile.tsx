@@ -29,6 +29,8 @@ const STATE_LABEL: Record<string, string> = {
   connecting: "Connecting…",
   live: "Live",
   error: "Error",
+  reconnecting: "Reconnecting…",
+  offline: "Offline",
 };
 
 export function CameraTile({
@@ -80,7 +82,8 @@ export function CameraTile({
   // Websocket value wins; database value is the fallback.
   const cameraState = liveState ?? camera.status;
   const isRunning =
-    cameraState === "live" || cameraState === "connecting" || isReceivingVideo;
+    ["live", "connecting", "reconnecting", "offline"].includes(cameraState) ||
+    isReceivingVideo;
 
   // Open a WebRTC connection to the backend and attach the incoming
   // video stream to our <video> element.
@@ -189,6 +192,8 @@ export function CameraTile({
       <div className="stats">
         <span>FPS {stats?.fps != null ? stats.fps.toFixed(1) : "—"}</span>
         <span>det/min {stats?.detections_per_min ?? "—"}</span>
+        <span>reconnects {stats?.reconnect_count ?? "—"}</span>
+        <span>seen {(() => { const t = stats?.last_frame_at ?? camera.lastSeenAt; return t ? new Date(t).toLocaleTimeString() : "—"; })()}</span>
       </div>
 
       {errorMessage && <p className="error">{errorMessage}</p>}
@@ -210,6 +215,18 @@ export function CameraTile({
         <button onClick={handleDelete} className="danger">
           Delete
         </button>
+        <label className="small">
+          <input
+            type="checkbox"
+            defaultChecked={camera.notifyOnOffline}
+            onChange={(e) =>
+              api
+                .updateCamera(camera.id, { notify_on_offline: e.target.checked })
+                .catch(() => {})
+            }
+          />
+          Notify if offline
+        </label>
       </div>
 
       {/* Last 5 alerts for this camera */}

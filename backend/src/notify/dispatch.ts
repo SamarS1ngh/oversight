@@ -61,3 +61,36 @@ export async function dispatchNotifications(alert: any, ownerId: string): Promis
     console.error("[notify] dispatch failed:", (e as Error).message);
   }
 }
+
+// A camera lifecycle event (offline / back online) — reuses the notify
+// pipeline but is transient: no alert row, no snapshot, no retry enqueue.
+export async function dispatchCameraEvent(
+  camera: { id: string; name: string },
+  ownerId: string,
+  kind: "offline" | "online",
+): Promise<void> {
+  try {
+    const channels = await db.select().from(notificationChannels)
+      .where(and(eq(notificationChannels.userId, ownerId), eq(notificationChannels.enabled, true)));
+    if (channels.length === 0) return;
+    const label = kind === "offline" ? "camera offline" : "camera back online";
+    const event: any = {
+      id: crypto.randomUUID(), camera_id: camera.id, severity: "high",
+      label, rule_id: null, ts: new Date().toISOString(), count: 0, confidence: 0,
+    };
+    const link = `${env.APP_URL}/dashboard`;
+    const now = Date.now();
+    for (const ch of channels) {
+      try {
+        if (!shouldNotify(ch, event)) continue;
+        if (!allow(`${ch.id}:${camera.id}:camera:${kind}`, now, ch.cooldownSecs)) continue;
+        const payload = renderAlert(ch.type, event, camera.name, label, link, null);
+        await sendChannel(ch.type, ch.config, payload, null);
+      } catch (e) {
+        console.error(`[notify] camera-event channel ${ch.id} (${ch.type}) failed:`, (e as Error).message);
+      }
+    }
+  } catch (e) {
+    console.error("[notify] camera-event dispatch failed:", (e as Error).message);
+  }
+}

@@ -1,4 +1,10 @@
-export type CameraStatus = "stopped" | "connecting" | "live" | "error";
+export type CameraStatus =
+  | "stopped"
+  | "connecting"
+  | "live"
+  | "error"
+  | "reconnecting"
+  | "offline";
 
 export type Camera = {
   id: string;
@@ -7,6 +13,8 @@ export type Camera = {
   location: string | null;
   enabled: boolean;
   status: CameraStatus;
+  notifyOnOffline: boolean;
+  lastSeenAt: string | null;
   createdAt: string;
   updatedAt: string;
 };
@@ -67,6 +75,8 @@ export type CamStats = {
   fps: number;
   detections_per_min: number;
   state?: string;
+  reconnect_count?: number;
+  last_frame_at?: string | null;
 };
 
 export type Clip = {

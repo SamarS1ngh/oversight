@@ -18,8 +18,13 @@ from .config import (
     STORAGE_BACKEND,
     CONF_THRESHOLD,
     TZ,
+    OFFLINE_GRACE_S,
+    STALL_TIMEOUT_S,
+    RECONNECT_BACKOFF_START_S,
+    RECONNECT_BACKOFF_MAX_S,
 )
-from .events import detection_event, snapshot_rel, stats_event, state_event
+from .events import detection_event, now_iso, snapshot_rel, stats_event, state_event
+from .reconnect import ReconnectState
 from .recorder import Recorder
 from .rules import evaluate as evaluate_rules
 from .tracking_rules import evaluate_tracking, bottom_center
@@ -86,6 +91,8 @@ class CameraWorker:
 
         self._fps = 0.0
         self._det_times: list[float] = []
+        self._reconnect_count = 0
+        self._last_frame_iso: str | None = None
 
         self.recorder = Recorder(
             camera_id=str(camera_id),
@@ -188,7 +195,9 @@ class CameraWorker:
                 await self._emit(
                     "stats",
                     stats_event(
-                        self.camera_id, self._fps, len(self._det_times), self.state
+                        self.camera_id, self._fps, len(self._det_times), self.state,
+                        reconnect_count=getattr(self, "_reconnect_count", 0),
+                        last_frame_at=getattr(self, "_last_frame_iso", None),
                     ),
                 )
         except asyncio.CancelledError:
@@ -198,68 +207,103 @@ class CameraWorker:
     def _decode_loop(self) -> None:
         import av
 
+        rc = ReconnectState(OFFLINE_GRACE_S, STALL_TIMEOUT_S,
+                            RECONNECT_BACKOFF_START_S, RECONNECT_BACKOFF_MAX_S)
         self._push_state("connecting")
-        try:
-            container = av.open(
-                self.rtsp_url,
-                options={"rtsp_transport": "tcp", "stimeout": "5000000"},
-            )
-            stream = container.streams.video[0]
-        except Exception as e:
-            log.exception("rtsp open failed: %s", self.camera_id)
-            self._push_state("error", f"rtsp connect failed: {str(e)[:160]}")
-            return
+        while not self._stop.is_set():
+            container = None
+            try:
+                container = av.open(
+                    self.rtsp_url,
+                    options={"rtsp_transport": "tcp", "stimeout": "5000000"},
+                )
+                stream = container.streams.video[0]
+            except Exception as e:
+                log.warning("rtsp open failed: %s (%s)", self.camera_id, str(e)[:120])
+                if container is not None:
+                    try:
+                        container.close()
+                    except Exception:
+                        pass
+                if rc.on_drop(time.monotonic()):
+                    self._push_state(rc.state)
+                self._backoff_wait(rc)
+                continue
+            if rc.on_connect_ok(time.monotonic()):
+                self._push_state("live")
+            self._reconnect_count = rc.reconnect_count
+            self.recorder.set_stream(stream)
+            try:
+                self._demux(container, stream, rc)  # runs until stop, drop, or stall
+            except Exception as e:
+                log.warning("decode loop dropped: %s (%s)", self.camera_id, str(e)[:120])
+            finally:
+                try:
+                    self.recorder.close()
+                except Exception:
+                    pass
+                try:
+                    container.close()
+                except Exception:
+                    pass
+            if not self._stop.is_set():
+                if rc.on_drop(time.monotonic()):
+                    self._push_state(rc.state)
+                self._backoff_wait(rc)
 
-        self._push_state("live")
-        self.recorder.set_stream(stream)
+    def _backoff_wait(self, rc: ReconnectState) -> None:
+        # Sleep the current backoff in small slices so stop() stays responsive,
+        # escalating reconnecting -> offline once the grace period passes.
+        deadline = time.monotonic() + rc.current_backoff
+        while not self._stop.is_set() and time.monotonic() < deadline:
+            if rc.tick(time.monotonic()):
+                self._push_state(rc.state)  # -> offline
+            self._reconnect_count = rc.reconnect_count
+            time.sleep(0.2)
+        if rc.tick(time.monotonic()):
+            self._push_state(rc.state)
+
+    def _demux(self, container, stream, rc: ReconnectState) -> None:
         frame_count = 0
         frames_since = 0
         last_fps_t = _now_ms()
-        try:
-            for packet in container.demux(stream):
+        for packet in container.demux(stream):
+            if self._stop.is_set():
+                break
+            for frame in packet.decode():
                 if self._stop.is_set():
                     break
-                for frame in packet.decode():
-                    if self._stop.is_set():
-                        break
-                    img = frame.to_ndarray(format="bgr24")
-                    frame_count += 1
-                    frames_since += 1
+                img = frame.to_ndarray(format="bgr24")
+                frame_count += 1
+                frames_since += 1
 
-                    now = _now_ms()
-                    if now - last_fps_t >= 1000:
-                        self._fps = frames_since * 1000.0 / (now - last_fps_t)
-                        frames_since = 0
-                        last_fps_t = now
+                now = _now_ms()
+                if now - last_fps_t >= 1000:
+                    self._fps = frames_since * 1000.0 / (now - last_fps_t)
+                    frames_since = 0
+                    last_fps_t = now
 
-                    boxes = []
-                    tracks = []
-                    if frame_count % DETECT_EVERY_N == 0:
-                        boxes = self.detector.detect_objects(img)
-                        if boxes:
-                            tracks = self.tracker.update(boxes, img.shape[1], img.shape[0])
-
-                    annotated = self._annotate(img, boxes)
+                boxes = []
+                tracks = []
+                if frame_count % DETECT_EVERY_N == 0:
+                    boxes = self.detector.detect_objects(img)
                     if boxes:
-                        self._emit_matches(img, boxes, tracks, now, annotated)
+                        tracks = self.tracker.update(boxes, img.shape[1], img.shape[0])
 
-                    self.latest_frame = VideoFrame.from_ndarray(annotated, format="bgr24")
+                annotated = self._annotate(img, boxes)
+                if boxes:
+                    self._emit_matches(img, boxes, tracks, now, annotated)
 
-                # buffer/record the compressed packet AFTER decoding it, so any
-                # timestamp rebasing during muxing can't disturb the decoder.
-                self.recorder.on_packet(packet)
-        except Exception as e:
-            log.exception("decode loop failed: %s", self.camera_id)
-            self._push_state("error", str(e)[:200])
-        finally:
-            try:
-                self.recorder.close()
-            except Exception:
-                pass
-            try:
-                container.close()
-            except Exception:
-                pass
+                self.latest_frame = VideoFrame.from_ndarray(annotated, format="bgr24")
+
+                if rc.is_stalled(time.monotonic()):
+                    raise RuntimeError("stall")
+                rc.on_frame(time.monotonic())
+                self._last_frame_iso = now_iso()
+
+            # buffer/record the compressed packet AFTER decoding it, so any
+            # timestamp rebasing during muxing can't disturb the decoder.
+            self.recorder.on_packet(packet)
 
     def _emit_one(self, m, w, h, frame) -> str:
         payload = detection_event(

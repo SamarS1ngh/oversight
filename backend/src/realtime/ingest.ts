@@ -5,7 +5,7 @@ import { db } from "../db";
 import { alerts, cameras, clips } from "../db/schema";
 import { ownerOf, sendToUser } from "./connections";
 import { handleAnswer } from "./signaling";
-import { dispatchNotifications } from "../notify/dispatch";
+import { dispatchNotifications, dispatchCameraEvent } from "../notify/dispatch";
 import { safeSnapshotPath } from "../notify/snapshot-url";
 
 // Subscribes to everything the worker emits and (a) persists alerts, (b) keeps
@@ -70,15 +70,41 @@ async function onDetection(d: any) {
   if (owner) void dispatchNotifications(d, owner);
 }
 
-async function onStats(s: any) {
-  if (!s?.camera_id) return;
+// Applies a camera_state (or camera_stats heartbeat) event to the `cameras`
+// row: updates status + lastSeenAt, and on a transition into offline (prior
+// status wasn't already offline) or a recovery into live (prior was
+// offline), dispatches a camera lifecycle notification if the camera opted
+// in via notifyOnOffline. Exported so it can be unit-tested directly rather
+// than only via the Redis-fed onStats path.
+export async function applyCameraState(s: any): Promise<void> {
   if (s.type === "camera_state" && s.state) {
+    const [cam] = await db.select().from(cameras).where(eq(cameras.id, s.camera_id)).limit(1);
+    const prev = cam?.status;
     await db
       .update(cameras)
       .set({ status: s.state, updatedAt: new Date() })
       .where(eq(cameras.id, s.camera_id))
       .catch(() => {});
+    if (cam && cam.notifyOnOffline) {
+      const enteringOffline = s.state === "offline" && prev !== "offline";
+      const recovered = s.state === "live" && prev === "offline";
+      if (enteringOffline || recovered) {
+        void dispatchCameraEvent({ id: cam.id, name: cam.name }, cam.userId, enteringOffline ? "offline" : "online");
+      }
+    }
+  } else if (s.type === "camera_stats") {
+    // heartbeat: stamp lastSeenAt from the worker's last_frame_at, which
+    // freezes when frames stop (unlike wall-clock time, which would keep
+    // advancing every ~1s even while the camera is reconnecting/offline).
+    if (s.last_frame_at) {
+      await db.update(cameras).set({ lastSeenAt: new Date(s.last_frame_at) }).where(eq(cameras.id, s.camera_id)).catch(() => {});
+    }
   }
+}
+
+async function onStats(s: any) {
+  if (!s?.camera_id) return;
+  await applyCameraState(s).catch(() => {});
   const owner = await ownerOf(s.camera_id);
   if (owner) {
     const channel = s.type === "camera_state" ? "state" : "stats";

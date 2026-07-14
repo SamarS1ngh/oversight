@@ -107,7 +107,9 @@ rolling latest only). Channel: `stats`.
   "ts": "2026-06-23T13:59:01.000Z",
   "fps": 24.5,                           // decoded frames/sec, smoothed
   "detections_per_min": 12,              // rolling 60s person-detection rate
-  "state": "live"                        // connecting | live | stopped | error
+  "state": "live",                       // connecting | live | stopped | reconnecting | offline
+  "reconnect_count": 3,                  // int, cumulative reconnects for this session
+  "last_frame_at": "2026-06-23T13:59:01.000Z"  // iso string|null, time of last decoded frame
 }
 ```
 
@@ -121,8 +123,8 @@ Channel: `stats` (same channel, distinguished by `type`).
   "type": "camera_state",
   "camera_id": "f6c1...",
   "ts": "2026-06-23T13:59:00.800Z",
-  "state": "error",                      // connecting | live | stopped | error
-  "detail": "rtsp connect failed: timeout"   // human-readable, optional
+  "state": "reconnecting",               // connecting | live | stopped | reconnecting | offline
+  "detail": "stream stalled, reconnecting"   // human-readable, optional
 }
 ```
 

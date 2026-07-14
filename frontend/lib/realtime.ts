@@ -47,6 +47,8 @@ export function useRealtime(token: string | null) {
               fps: d.fps,
               detections_per_min: d.detections_per_min,
               state: d.state,
+              reconnect_count: d.reconnect_count,
+              last_frame_at: d.last_frame_at,
             },
           }));
           if (d.state)

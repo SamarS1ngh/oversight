@@ -73,6 +73,7 @@ cameraRoutes.patch("/:id", async (c) => {
     patch.location = b.location;
   }
   if (typeof b.enabled === "boolean") patch.enabled = b.enabled;
+  if (typeof b.notify_on_offline === "boolean") patch.notifyOnOffline = b.notify_on_offline;
 
   const [updated] = await db
     .update(cameras)

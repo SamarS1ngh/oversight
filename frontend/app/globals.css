@@ -195,6 +195,14 @@ input[type="checkbox"] {
 .badge.stopped {
   color: var(--muted);
 }
+.badge.reconnecting {
+  background: #b45309;
+  color: #fff;
+}
+.badge.offline {
+  background: #b91c1c;
+  color: #fff;
+}
 
 .video-wrap {
   position: relative;
