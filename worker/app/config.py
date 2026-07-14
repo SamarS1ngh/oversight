@@ -40,3 +40,9 @@ MODEL_CLASSES = [
     ).split(",") if s.strip()
 ]
 TZ = _os.environ.get("TZ", "UTC")
+
+# reconnect / stall watchdog (M4a)
+OFFLINE_GRACE_S = float(os.environ.get("OFFLINE_GRACE_S", "60"))
+STALL_TIMEOUT_S = float(os.environ.get("STALL_TIMEOUT_S", "10"))
+RECONNECT_BACKOFF_START_S = float(os.environ.get("RECONNECT_BACKOFF_START_S", "1"))
+RECONNECT_BACKOFF_MAX_S = float(os.environ.get("RECONNECT_BACKOFF_MAX_S", "30"))

@@ -50,6 +50,8 @@ def stats_event(
     detections_per_min: int,
     state: str,
     ts: str | None = None,
+    reconnect_count: int = 0,
+    last_frame_at: str | None = None,
 ) -> dict:
     """Camera stats — matches §3 of docs/EVENT_FORMAT.md."""
     return {
@@ -59,6 +61,8 @@ def stats_event(
         "fps": round(float(fps), 2),
         "detections_per_min": int(detections_per_min),
         "state": state,
+        "reconnect_count": int(reconnect_count),
+        "last_frame_at": last_frame_at,
     }
 
 
