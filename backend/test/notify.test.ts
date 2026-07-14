@@ -277,3 +277,19 @@ test("snapshot route serves the jpeg for a valid token, 403/404 otherwise", asyn
   expect((await call(`/alerts/${alertId}/snapshot?token=bad`)).status).toBe(403);
   expect((await call(`/alerts/00000000-0000-0000-0000-000000000000/snapshot?token=${signSnapshotToken("00000000-0000-0000-0000-000000000000", Date.now())}`)).status).toBe(404);
 });
+
+test("dispatchCameraEvent notifies matching channels for an offline event", async () => {
+  if (!dbUp) return;
+  const { dispatchCameraEvent } = await import("../src/notify/dispatch");
+  const a = await nuser();
+  let received: any = null;
+  const server = Bun.serve({ port: 0, async fetch(req) { received = await req.json(); return new Response("ok"); } });
+  const cam = await (await a(`/cameras`, json({ name: "Gate", rtsp_url: "rtsp://x" }))).json();
+  await a(`/notifications`, json({ type: "webhook", name: "hook", config: { url: `http://127.0.0.1:${server.port}/h` }, minSeverity: "low", cooldownSecs: 0 }));
+  await dispatchCameraEvent({ id: cam.id, name: "Gate" }, cam.userId, "offline");
+  await new Promise((r) => setTimeout(r, 50));
+  expect(received?.event).toBe("alert");
+  expect(String(received?.alert?.label)).toContain("offline");
+  expect(received?.alert?.cameraId).toBe(cam.id);
+  server.stop();
+});
