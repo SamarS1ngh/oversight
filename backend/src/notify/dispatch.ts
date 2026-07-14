@@ -83,7 +83,7 @@ export async function dispatchCameraEvent(
     for (const ch of channels) {
       try {
         if (!shouldNotify(ch, event)) continue;
-        if (!allow(`${ch.id}:${camera.id}:camera`, now, ch.cooldownSecs)) continue;
+        if (!allow(`${ch.id}:${camera.id}:camera:${kind}`, now, ch.cooldownSecs)) continue;
         const payload = renderAlert(ch.type, event, camera.name, label, link, null);
         await sendChannel(ch.type, ch.config, payload, null);
       } catch (e) {

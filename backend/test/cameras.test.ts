@@ -63,3 +63,24 @@ test("applyCameraState: offline transition on an opted-in camera dispatches; opt
   expect(hits).toBeGreaterThanOrEqual(1);
   server.stop();
 });
+
+test("applyCameraState: lastSeenAt is stamped from camera_stats.last_frame_at, not camera_state", async () => {
+  if (!dbUp) return;
+  const { applyCameraState } = await import("../src/realtime/ingest");
+  const a = await nuser();
+  const cam = await (await a(`/cameras`, json({ name: "C3", rtsp_url: "rtsp://x" }))).json();
+  const t1 = new Date("2026-07-01T00:00:00.000Z").toISOString();
+  await applyCameraState({ type: "camera_stats", camera_id: cam.id, last_frame_at: t1 });
+  let [row] = await db.select({ lastSeenAt: cameras.lastSeenAt }).from(cameras).where(eq(cameras.id, cam.id)).limit(1);
+  expect(row.lastSeenAt?.toISOString()).toBe(t1);
+
+  const t2 = new Date("2026-07-02T00:00:00.000Z").toISOString();
+  await applyCameraState({ type: "camera_stats", camera_id: cam.id, last_frame_at: t2 });
+  [row] = await db.select({ lastSeenAt: cameras.lastSeenAt }).from(cameras).where(eq(cameras.id, cam.id)).limit(1);
+  expect(row.lastSeenAt?.toISOString()).toBe(t2);
+
+  // a camera_state transition must not touch lastSeenAt
+  await applyCameraState({ type: "camera_state", camera_id: cam.id, state: "offline" });
+  [row] = await db.select({ lastSeenAt: cameras.lastSeenAt }).from(cameras).where(eq(cameras.id, cam.id)).limit(1);
+  expect(row.lastSeenAt?.toISOString()).toBe(t2);
+});

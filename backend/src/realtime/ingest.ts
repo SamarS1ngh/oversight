@@ -82,7 +82,7 @@ export async function applyCameraState(s: any): Promise<void> {
     const prev = cam?.status;
     await db
       .update(cameras)
-      .set({ status: s.state, lastSeenAt: new Date(), updatedAt: new Date() })
+      .set({ status: s.state, updatedAt: new Date() })
       .where(eq(cameras.id, s.camera_id))
       .catch(() => {});
     if (cam && cam.notifyOnOffline) {
@@ -93,8 +93,12 @@ export async function applyCameraState(s: any): Promise<void> {
       }
     }
   } else if (s.type === "camera_stats") {
-    // heartbeat: freeze lastSeenAt at the last time we heard from the camera
-    await db.update(cameras).set({ lastSeenAt: new Date() }).where(eq(cameras.id, s.camera_id)).catch(() => {});
+    // heartbeat: stamp lastSeenAt from the worker's last_frame_at, which
+    // freezes when frames stop (unlike wall-clock time, which would keep
+    // advancing every ~1s even while the camera is reconnecting/offline).
+    if (s.last_frame_at) {
+      await db.update(cameras).set({ lastSeenAt: new Date(s.last_frame_at) }).where(eq(cameras.id, s.camera_id)).catch(() => {});
+    }
   }
 }
 

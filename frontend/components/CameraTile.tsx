@@ -193,9 +193,7 @@ export function CameraTile({
         <span>FPS {stats?.fps != null ? stats.fps.toFixed(1) : "—"}</span>
         <span>det/min {stats?.detections_per_min ?? "—"}</span>
         <span>reconnects {stats?.reconnect_count ?? "—"}</span>
-        <span>
-          seen {camera.lastSeenAt ? new Date(camera.lastSeenAt).toLocaleTimeString() : "—"}
-        </span>
+        <span>seen {(() => { const t = stats?.last_frame_at ?? camera.lastSeenAt; return t ? new Date(t).toLocaleTimeString() : "—"; })()}</span>
       </div>
 
       {errorMessage && <p className="error">{errorMessage}</p>}

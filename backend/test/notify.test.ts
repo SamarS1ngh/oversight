@@ -293,3 +293,19 @@ test("dispatchCameraEvent notifies matching channels for an offline event", asyn
   expect(received?.alert?.cameraId).toBe(cam.id);
   server.stop();
 });
+
+test("dispatchCameraEvent: offline and recovery both deliver despite a shared cooldown window (per-kind cooldown key)", async () => {
+  if (!dbUp) return;
+  _reset();
+  const { dispatchCameraEvent } = await import("../src/notify/dispatch");
+  const a = await nuser();
+  let posts = 0;
+  const server = Bun.serve({ port: 0, async fetch(req) { posts++; await req.json(); return new Response("ok"); } });
+  const cam = await (await a(`/cameras`, json({ name: "Gate2", rtsp_url: "rtsp://x" }))).json();
+  await a(`/notifications`, json({ type: "webhook", name: "hook2", config: { url: `http://127.0.0.1:${server.port}/h` }, minSeverity: "low", cooldownSecs: 60 }));
+  await dispatchCameraEvent({ id: cam.id, name: "Gate2" }, cam.userId, "offline");
+  await dispatchCameraEvent({ id: cam.id, name: "Gate2" }, cam.userId, "online");
+  await new Promise((r) => setTimeout(r, 50));
+  expect(posts).toBe(2);
+  server.stop();
+});
