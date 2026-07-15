@@ -43,6 +43,9 @@ class WorkerApp:
 
     async def handle_command(self, cmd: dict) -> None:
         kind = cmd.get("type")
+        if kind == "discover":
+            await self.handle_discover(cmd)
+            return
         cid = cmd.get("camera_id")
         if not cid:
             return
@@ -67,6 +70,21 @@ class WorkerApp:
                 await worker.stop()
                 self.limiter.reset(cid)
                 log.info("stopped camera %s", cid)
+
+    async def handle_discover(self, cmd: dict) -> None:
+        from .discovery import discover_onvif
+        from .config import DISCOVERY_TIMEOUT_S
+        scan_id = cmd.get("scan_id")
+        user_id = cmd.get("user_id")
+        try:
+            cams = await asyncio.to_thread(
+                discover_onvif, cmd.get("username", ""), cmd.get("password", ""), DISCOVERY_TIMEOUT_S
+            )
+            await self.publish("discovery:results", {"scan_id": scan_id, "user_id": user_id, "cameras": cams})
+        except Exception as e:
+            log.exception("discovery failed")
+            await self.publish("discovery:results",
+                               {"scan_id": scan_id, "user_id": user_id, "cameras": [], "error": str(e)[:200]})
 
     async def handle_webrtc(self, req: dict) -> None:
         cid = req.get("camera_id")
