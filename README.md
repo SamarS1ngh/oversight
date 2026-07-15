@@ -72,6 +72,8 @@ recording knobs added for the clip/thumbnail feature, plus rules-engine settings
 
 **Camera Health (M4a):** cameras automatically reconnect with exponential backoff when the stream stalls or fails. A camera is marked `offline` after `OFFLINE_GRACE_S` of no frames. Each camera card displays its reconnecting/offline status, time since last frame, and reconnect count. Enable the per-camera **Notify if offline** toggle to send offline/recovery notifications via your configured M3 channels.
 
+**ONVIF Discovery (M4b):** the dashboard includes a **Scan network** button that discovers ONVIF cameras on your local area network and auto-prefills the RTSP URL for each discovered device. Provide one credential set per scan; the worker broadcasts a multicast query and collects device descriptions. Non-ONVIF cameras can still be added manually via the **+ Add Camera** form. Discovery runs asynchronously in the worker; results are pushed to the UI over WebSocket.
+
 ---
 
 ## Run
