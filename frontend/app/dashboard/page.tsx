@@ -5,6 +5,7 @@ import { api, getToken, clearToken } from "@/lib/api";
 import { useRealtime } from "@/lib/realtime";
 import { CameraTile } from "@/components/CameraTile";
 import { CameraForm } from "@/components/CameraForm";
+import { ScanModal } from "@/components/ScanModal";
 import { ClipPlayer } from "@/components/ClipPlayer";
 import type { Alert, Camera } from "@/lib/types";
 
@@ -17,8 +18,11 @@ export default function Dashboard() {
   const [editing, setEditing] = useState<Camera | null>(null);
   const [loading, setLoading] = useState(true);
   const [playingClip, setPlayingClip] = useState<string | null>(null);
+  const [showScan, setShowScan] = useState(false);
+  const [prefill, setPrefill] = useState<{ name?: string; rtspUrl?: string } | null>(null);
 
-  const { statsByCam, stateByCam, alertBump, clipBump, connected } = useRealtime(token);
+  const { statsByCam, stateByCam, alertBump, clipBump, connected, discovered, clearDiscovered } =
+    useRealtime(token);
 
   useEffect(() => {
     const t = getToken();
@@ -106,6 +110,7 @@ export default function Dashboard() {
           >
             + Add camera
           </button>
+          <button onClick={() => setShowScan(true)}>Scan network</button>
           <a href="/events" className="btn">
             Recordings
           </a>
@@ -143,10 +148,31 @@ export default function Dashboard() {
       {showForm && (
         <CameraForm
           camera={editing}
-          onClose={() => setShowForm(false)}
+          prefill={prefill ?? undefined}
+          onClose={() => {
+            setShowForm(false);
+            setPrefill(null);
+          }}
           onSaved={() => {
             setShowForm(false);
+            setPrefill(null);
             load();
+          }}
+        />
+      )}
+
+      {showScan && (
+        <ScanModal
+          discovered={discovered}
+          cameras={cameras}
+          onClose={() => {
+            setShowScan(false);
+            clearDiscovered();
+          }}
+          onAdd={(p) => {
+            setShowScan(false);
+            setPrefill(p);
+            setShowForm(true);
           }}
         />
       )}
