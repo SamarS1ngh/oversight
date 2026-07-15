@@ -44,7 +44,7 @@ class WorkerApp:
     async def handle_command(self, cmd: dict) -> None:
         kind = cmd.get("type")
         if kind == "discover":
-            await self.handle_discover(cmd)
+            asyncio.create_task(self.handle_discover(cmd))
             return
         cid = cmd.get("camera_id")
         if not cid:

@@ -28,6 +28,15 @@ test("POST /discovery/scan returns a scan_id for an authed caller", async () => 
   expect(body.scan_id.length).toBeGreaterThan(10);
 });
 
+test("POST /discovery/scan rate-limits a second rapid scan from the same user", async () => {
+  if (!dbUp) return;
+  const a = await nuser();
+  const first = await a("/discovery/scan", json({ username: "admin", password: "pw" }));
+  expect(first.status).toBe(200);
+  const second = await a("/discovery/scan", json({ username: "admin", password: "pw" }));
+  expect(second.status).toBe(429);
+});
+
 test("onDiscoveryResults relays to the requesting user's socket", () => {
   const { onDiscoveryResults } = require("../src/realtime/ingest");
   const sent: any[] = [];
