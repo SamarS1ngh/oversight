@@ -8,6 +8,7 @@ import { alertRoutes, snapshotRoutes } from "./alerts/routes";
 import { clipRoutes } from "./clips/routes";
 import { zoneRoutes, ruleRoutes } from "./rules/routes";
 import { notifyRoutes } from "./notify/routes";
+import { discoveryRoutes } from "./discovery/routes";
 import { requireAuth } from "./auth/middleware";
 import { verifyToken } from "./auth/jwt";
 import { addConn, removeConn } from "./realtime/connections";
@@ -29,6 +30,7 @@ app.route("/alerts", snapshotRoutes);
 app.route("/alerts", alertRoutes);
 app.route("/clips", clipRoutes);
 app.route("/notifications", notifyRoutes);
+app.route("/discovery", discoveryRoutes);
 
 app.get("/me", requireAuth, (c) =>
   c.json({ id: c.get("userId"), username: c.get("username") }),

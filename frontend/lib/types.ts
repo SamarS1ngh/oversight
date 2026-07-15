@@ -106,3 +106,11 @@ export type NotifChannel = {
   enabled: boolean;
   createdAt: string;
 };
+
+export type DiscoveredCamera = {
+  name: string;
+  ip: string;
+  hardware?: string | null;
+  rtsp_url: string | null;
+  error: string | null;
+};

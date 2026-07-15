@@ -68,6 +68,21 @@ For a `tripwire` rule, `zone` is a **2-point line** (`[{"x","y"}, {"x","y"}]`) i
 }
 ```
 
+### Discover command (ONVIF scan)
+
+```json
+{
+  "type": "discover",                      // ONVIF network discovery
+  "scan_id": "scan-123...",                // UUID v4, correlates results back to the user
+  "user_id": "9ab2...",                    // user UUID (results are private to this user)
+  "username": "admin",                     // credential for discovered cameras
+  "password": "12345",                     // credential for discovered cameras
+  "ts": "2026-06-23T13:59:00.123Z"
+}
+```
+
+The worker receives this on `camera:commands` and broadcasts a multicast ONVIF probe. Results are published to Redis on `discovery:results` (see §7). The command has **no `camera_id`** — it's a one-shot scan, not tied to a running camera.
+
 ## 2. Detection event (Worker → Redis → API → DB)
 
 Emitted by the worker whenever ≥1 detection matches a rule (subject to
@@ -169,6 +184,29 @@ envelope. `path`/`thumb_path` are relative to `RECORDINGS_DIR`.
 
 The WebSocket envelope (§5) `channel` may also be `clip`, whose `data` is the
 payload above.
+
+## 7. Discovery results (Worker → Redis → API → WS)
+
+Emitted by the worker in response to a `discover` command (§1.4). Channel:
+`discovery:results`. The API relays this directly to the user over WebSocket
+(opaque envelope).
+
+```json
+{
+  "scan_id": "scan-123...",                // UUID, echoes the discover command's scan_id
+  "user_id": "9ab2...",                    // UUID, echoes the discover command's user_id
+  "cameras": [                             // discovered devices, may be empty
+    {
+      "name": "Front Door",                // device friendly name
+      "ip": "192.168.1.100",               // device IP address
+      "hardware": "Dahua IPC-HDBW2431E",   // manufacturer + model
+      "rtsp_url": "rtsp://192.168.1.100:554/stream1",  // auto-discovered RTSP endpoint
+      "error": null                        // null on success, string error message if auth failed
+    }
+  ],
+  "error": null                            // null on success; non-empty string if multicast scan failed entirely
+}
+```
 
 ---
 

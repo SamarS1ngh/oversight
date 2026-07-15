@@ -103,6 +103,13 @@ export const api = {
   deleteChannel: (id: string) => req(`/notifications/${id}`, { method: "DELETE" }),
   testChannel: (id: string) => req(`/notifications/${id}/test`, { method: "POST" }),
   vapidPublicKey: () => req("/notifications/vapid-public-key"),
+
+  scanNetwork: (username: string, password: string) =>
+    req("/discovery/scan", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ username, password }),
+    }),
 };
 
 export function clipVideoUrl(id: string) {

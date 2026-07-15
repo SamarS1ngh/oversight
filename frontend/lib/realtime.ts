@@ -1,7 +1,7 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
 import { WS_URL } from "./config";
-import type { CamStats } from "./types";
+import type { CamStats, DiscoveredCamera } from "./types";
 
 type AlertBump = { cameraId: string; alert: any };
 
@@ -17,6 +17,7 @@ export function useRealtime(token: string | null) {
     clip: any;
   } | null>(null);
   const [connected, setConnected] = useState(false);
+  const [discovered, setDiscovered] = useState<DiscoveredCamera[]>([]);
   const wsRef = useRef<WebSocket | null>(null);
 
   useEffect(() => {
@@ -65,6 +66,13 @@ export function useRealtime(token: string | null) {
             cameraId: msg.data.camera_id,
             clip: msg.data,
           });
+        } else if (msg.channel === "discovery") {
+          const cams = (msg.data?.cameras ?? []) as DiscoveredCamera[];
+          setDiscovered((prev) => {
+            const byIp = new Map(prev.map((c) => [c.ip, c]));
+            for (const c of cams) byIp.set(c.ip, c);
+            return Array.from(byIp.values());
+          });
         }
       };
     }
@@ -77,5 +85,15 @@ export function useRealtime(token: string | null) {
     };
   }, [token]);
 
-  return { statsByCam, stateByCam, alertBump, clipBump, connected };
+  const clearDiscovered = () => setDiscovered([]);
+
+  return {
+    statsByCam,
+    stateByCam,
+    alertBump,
+    clipBump,
+    connected,
+    discovered,
+    clearDiscovered,
+  };
 }

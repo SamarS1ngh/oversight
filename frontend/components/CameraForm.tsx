@@ -5,13 +5,14 @@ import { api } from "@/lib/api";
 
 type Props = {
   camera?: Camera | null;
+  prefill?: { name?: string; rtspUrl?: string };
   onClose: () => void;
   onSaved: () => void;
 };
 
-export function CameraForm({ camera, onClose, onSaved }: Props) {
-  const [name, setName] = useState(camera?.name ?? "");
-  const [rtsp, setRtsp] = useState(camera?.rtspUrl ?? "");
+export function CameraForm({ camera, prefill, onClose, onSaved }: Props) {
+  const [name, setName] = useState(camera?.name ?? prefill?.name ?? "");
+  const [rtsp, setRtsp] = useState(camera?.rtspUrl ?? prefill?.rtspUrl ?? "");
   const [location, setLocation] = useState(camera?.location ?? "");
   const [enabled, setEnabled] = useState(camera?.enabled ?? true);
   const [err, setErr] = useState<string | null>(null);
