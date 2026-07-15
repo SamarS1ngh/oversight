@@ -27,3 +27,21 @@ test("POST /discovery/scan returns a scan_id for an authed caller", async () => 
   expect(typeof body.scan_id).toBe("string");
   expect(body.scan_id.length).toBeGreaterThan(10);
 });
+
+test("onDiscoveryResults relays to the requesting user's socket", () => {
+  const { onDiscoveryResults } = require("../src/realtime/ingest");
+  const sent: any[] = [];
+  const fakeSend = (uid: string, payload: any) => { sent.push({ uid, payload }); };
+  onDiscoveryResults({ user_id: "u1", scan_id: "s1", cameras: [{ ip: "1.2.3.4" }] }, fakeSend);
+  expect(sent.length).toBe(1);
+  expect(sent[0].uid).toBe("u1");
+  expect(sent[0].payload.channel).toBe("discovery");
+  expect(sent[0].payload.data.cameras[0].ip).toBe("1.2.3.4");
+});
+
+test("onDiscoveryResults ignores a message with no user_id", () => {
+  const { onDiscoveryResults } = require("../src/realtime/ingest");
+  const sent: any[] = [];
+  onDiscoveryResults({ scan_id: "s1", cameras: [] }, (u, p) => sent.push({ u, p }));
+  expect(sent.length).toBe(0);
+});

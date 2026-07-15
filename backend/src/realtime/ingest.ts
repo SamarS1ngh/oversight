@@ -17,6 +17,7 @@ export function startIngest() {
     CHANNELS.stats,
     CHANNELS.webrtcAnswers,
     CHANNELS.clips,
+    CHANNELS.discoveryResults,
     (err) => {
       if (err) console.error("[ingest] subscribe failed:", err.message);
     },
@@ -33,9 +34,10 @@ export function startIngest() {
     else if (channel === CHANNELS.stats) void onStats(msg);
     else if (channel === CHANNELS.webrtcAnswers) handleAnswer(msg);
     else if (channel === CHANNELS.clips) void onClip(msg);
+    else if (channel === CHANNELS.discoveryResults) onDiscoveryResults(msg);
   });
 
-  console.log("[ingest] subscribed to detections, stats, webrtc:answers, clips");
+  console.log("[ingest] subscribed to detections, stats, webrtc:answers, clips, discovery:results");
 }
 
 async function onDetection(d: any) {
@@ -139,4 +141,8 @@ async function onClip(k: any) {
   }
   const owner = await ownerOf(k.camera_id);
   if (owner) sendToUser(owner, { channel: "clip", data: k });
+}
+
+export function onDiscoveryResults(msg: any, send = sendToUser): void {
+  if (msg?.user_id) send(msg.user_id, { channel: "discovery", data: msg });
 }
