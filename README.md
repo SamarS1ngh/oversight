@@ -37,8 +37,12 @@ git clone https://github.com/SamarS1ngh/oversight oversight && cd oversight
 # open http://localhost:3000  (login printed by the installer)
 ```
 
-Requires Docker + Docker Compose v2. `install.sh` generates secrets into
-`.env` on first run and brings the stack up with `docker compose up -d --build`.
+Requires Docker + Docker Compose v2, on a **Linux host** (recommended). The
+detection worker runs with host networking so the browser can reach its WebRTC
+ICE candidates for live video — on Docker Desktop (macOS/Windows) host
+networking differs, so the live stream may need extra configuration. `install.sh`
+generates secrets into `.env` on first run and brings the stack up with
+`docker compose up -d --build`.
 
 ---
 
