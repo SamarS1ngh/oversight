@@ -86,7 +86,9 @@ The worker receives this on `camera:commands` and broadcasts a multicast ONVIF p
 ## 2. Detection event (Worker → Redis → API → DB)
 
 Emitted by the worker whenever ≥1 detection matches a rule (subject to
-dedup/rate-limit, see §5). Channel: `detections`. Persisted to the `alerts`
+dedup/rate-limit, see §5). Delivered via Redis Streams: written to `stream:detections`
+by the worker, consumed by the backend using consumer group `vms-backend`. Payload
+stored under the `data` field in the stream entry. Persisted to the `alerts`
 table verbatim (minus transport fields).
 
 ```json
@@ -161,7 +163,9 @@ the API filters server-side before pushing.
 ## 6. Clip ready (Worker → Redis → API → DB → WS)
 
 Emitted by the worker when an event-clip finishes writing (~POST_ROLL after the
-last triggering detection). Channel: `clips`. Persisted to the `clips` table;
+last triggering detection). Delivered via Redis Streams: written to `stream:clips`
+by the worker, consumed by the backend using consumer group `vms-backend`. Payload
+stored under the `data` field in the stream entry. Persisted to the `clips` table;
 the API links it to the alert via `alert_id` and fans it out as a `clip`
 envelope. `path`/`thumb_path` are relative to `RECORDINGS_DIR`.
 
