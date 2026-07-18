@@ -5,7 +5,7 @@ recording, rules, and notifications, on your own hardware.
 
 [![License: AGPL v3](https://img.shields.io/badge/License-AGPL%20v3-blue.svg)](LICENSE)
 
-![Oversight dashboard screenshot](docs/screenshot.png)
+![Oversight dashboard](docs/screenshots/01-dashboard.png)
 
 ---
 
@@ -38,7 +38,7 @@ git clone https://github.com/SamarS1ngh/oversight oversight && cd oversight
 ```
 
 Requires Docker + Docker Compose v2. `install.sh` generates secrets into
-`.env` on first run and brings the stack up with `docker compose up -d`.
+`.env` on first run and brings the stack up with `docker compose up -d --build`.
 
 ---
 
@@ -76,7 +76,8 @@ Full list in [`.env.example`](.env.example). Key variables:
 | `RETENTION_DAYS` | `7` | Delete clips older than this |
 | `OFFLINE_GRACE_S` | `60` | Seconds without frames before a camera is marked offline |
 | `STALL_TIMEOUT_S` | `10` | Seconds without frames before a reconnect attempt starts |
-| `VAPID_PUBLIC_KEY` / `VAPID_PRIVATE_KEY` / `VAPID_SUBJECT` | *(empty)* | Web push keys — generate with `bun run backend/scripts/gen-vapid.ts` |
+| `VAPID_PUBLIC_KEY` / `VAPID_PRIVATE_KEY` | *(empty)* | Web push keys — generate with `make vapid` (or `bun run backend/scripts/gen-vapid.ts`); web push is off until set |
+| `VAPID_SUBJECT` | `mailto:admin@example.com` | Contact URI required by the web-push spec |
 | `STREAM_MAXLEN` | `10000` | Max entries kept per Redis stream before trimming |
 | `MAX_DELIVERIES` | `5` | Max delivery attempts before an event is dead-lettered |
 
