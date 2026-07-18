@@ -34,7 +34,16 @@ class WorkerApp:
         self.workers: dict[str, CameraWorker] = {}
 
     async def publish(self, channel: str, payload: dict) -> None:
-        await self.pub.publish(channel, json.dumps(payload))
+        from .streams import is_durable, stream_key
+        from .config import STREAM_MAXLEN
+        data = json.dumps(payload)
+        if is_durable(channel):
+            # durable: append to a Redis Stream (survives a backend restart),
+            # trimmed approximately so it can't grow unbounded.
+            await self.pub.xadd(stream_key(channel), {"data": data},
+                                maxlen=STREAM_MAXLEN, approximate=True)
+        else:
+            await self.pub.publish(channel, data)
 
     async def publish_answer(self, req_id: str, sdp: str) -> None:
         await self.pub.publish(

@@ -265,7 +265,10 @@ test("snapshot route serves the jpeg for a valid token, 403/404 otherwise", asyn
   if (!dbUp) return;
   const a = await nuser();
   const cam = await (await a(`/cameras`, json({ name: "snapcam", rtsp_url: "rtsp://x" }))).json();
-  const alertId = "33333333-3333-3333-3333-333333333331";
+  // Random per run: a fixed id + onConflictDoNothing kept the FIRST run's
+  // snapshotPath (an old camera) in the shared Postgres, so reruns 404'd on a
+  // stale path. A fresh id inserts cleanly every run.
+  const alertId = crypto.randomUUID();
   const rel = `snapshots/${cam.id}/${alertId}.jpg`;
   mkdirSync(join(env.RECORDINGS_DIR, "snapshots", cam.id), { recursive: true });
   writeFileSync(join(env.RECORDINGS_DIR, rel), Buffer.from([0xff, 0xd8, 0xff, 0xd9]));

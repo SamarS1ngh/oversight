@@ -8,20 +8,21 @@ import { handleAnswer } from "./signaling";
 import { dispatchNotifications, dispatchCameraEvent } from "../notify/dispatch";
 import { safeSnapshotPath } from "../notify/snapshot-url";
 
+// Channels still delivered over pub/sub. detections + clips moved to the
+// durable stream consumer (see stream-consumer.ts) and are intentionally absent.
+export const PUBSUB_CHANNELS = [
+  CHANNELS.stats,
+  CHANNELS.webrtcAnswers,
+  CHANNELS.discoveryResults,
+];
+
 // Subscribes to everything the worker emits and (a) persists alerts, (b) keeps
 // camera.status in sync, (c) fans events out to the owning user's WebSockets,
 // (d) routes WebRTC answers back to the signaling relay.
 export function startIngest() {
-  redisSub.subscribe(
-    CHANNELS.detections,
-    CHANNELS.stats,
-    CHANNELS.webrtcAnswers,
-    CHANNELS.clips,
-    CHANNELS.discoveryResults,
-    (err) => {
-      if (err) console.error("[ingest] subscribe failed:", err.message);
-    },
-  );
+  redisSub.subscribe(...PUBSUB_CHANNELS, (err) => {
+    if (err) console.error("[ingest] subscribe failed:", err.message);
+  });
 
   redisSub.on("message", (channel, raw) => {
     let msg: any;
@@ -30,21 +31,20 @@ export function startIngest() {
     } catch {
       return;
     }
-    if (channel === CHANNELS.detections) void onDetection(msg);
-    else if (channel === CHANNELS.stats) void onStats(msg);
+    if (channel === CHANNELS.stats) void onStats(msg);
     else if (channel === CHANNELS.webrtcAnswers) handleAnswer(msg);
-    else if (channel === CHANNELS.clips) void onClip(msg);
     else if (channel === CHANNELS.discoveryResults) onDiscoveryResults(msg);
   });
 
-  console.log("[ingest] subscribed to detections, stats, webrtc:answers, clips, discovery:results");
+  console.log("[ingest] subscribed to stats, webrtc:answers, discovery:results");
 }
 
-async function onDetection(d: any) {
+export async function onDetection(d: any) {
   if (!d?.id || !d?.camera_id) return;
+  let inserted;
   try {
     // id is the worker's UUID -> idempotent on redelivery
-    await db
+    inserted = await db
       .insert(alerts)
       .values({
         id: d.id,
@@ -62,11 +62,17 @@ async function onDetection(d: any) {
         severity: d.severity ?? "low",
         snapshotPath: safeSnapshotPath(d.snapshot_path),
       })
-      .onConflictDoNothing();
+      .onConflictDoNothing()
+      .returning({ id: alerts.id });
   } catch (e) {
+    // Rethrow so the durable stream consumer leaves the entry PENDING and
+    // retries it — a transient DB failure must not silently drop a detection
+    // (onConflictDoNothing means a duplicate id does NOT reach here, so this is
+    // a genuine write failure, not a redelivery).
     console.error("[ingest] alert insert failed:", (e as Error).message);
-    return;
+    throw e;
   }
+  if (inserted.length === 0) return; // duplicate redelivery — already persisted + notified
   const owner = await ownerOf(d.camera_id);
   if (owner) sendToUser(owner, { channel: "alert", data: d });
   if (owner) void dispatchNotifications(d, owner);
@@ -114,7 +120,7 @@ async function onStats(s: any) {
   }
 }
 
-async function onClip(k: any) {
+export async function onClip(k: any) {
   if (!k?.id || !k?.camera_id || !k?.path) return;
   const base = {
     id: k.id,
@@ -127,18 +133,22 @@ async function onClip(k: any) {
     durationMs: k.duration_ms ?? 0,
     sizeBytes: k.size_bytes ?? 0,
   };
+  let inserted;
   try {
-    await db.insert(clips).values({ ...base, alertId: k.alert_id ?? null }).onConflictDoNothing();
+    inserted = await db.insert(clips).values({ ...base, alertId: k.alert_id ?? null }).onConflictDoNothing().returning({ id: clips.id });
   } catch {
     // The alert row may not have landed yet (FK). Store the clip unlinked
     // rather than lose it.
     try {
-      await db.insert(clips).values({ ...base, alertId: null }).onConflictDoNothing();
+      inserted = await db.insert(clips).values({ ...base, alertId: null }).onConflictDoNothing().returning({ id: clips.id });
     } catch (e) {
+      // Both inserts failed for a non-FK reason (a genuine DB error) — rethrow
+      // so the stream consumer retries rather than dropping the clip row.
       console.error("[ingest] clip insert failed:", (e as Error).message);
-      return;
+      throw e;
     }
   }
+  if (!inserted || inserted.length === 0) return; // duplicate — skip fanout
   const owner = await ownerOf(k.camera_id);
   if (owner) sendToUser(owner, { channel: "clip", data: k });
 }

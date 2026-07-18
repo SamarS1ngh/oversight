@@ -17,6 +17,7 @@ services:
 
   redis:
     image: redis:7-alpine
+    command: ["redis-server", "--appendonly", "yes"]
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 5s
@@ -24,6 +25,8 @@ services:
       retries: 10
     ports:
       - "6379:6379"
+    volumes:
+      - redis-data:/data
 
   # RTSP server. The `cam` path is fed by the streamer below.
   mediamtx:
@@ -97,3 +100,4 @@ services:
 volumes:
   pgdata:
   recordings:
+  redis-data:

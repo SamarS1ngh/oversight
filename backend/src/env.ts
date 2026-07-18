@@ -19,4 +19,7 @@ export const env = {
   VAPID_PUBLIC_KEY: process.env.VAPID_PUBLIC_KEY ?? "",
   VAPID_PRIVATE_KEY: process.env.VAPID_PRIVATE_KEY ?? "",
   VAPID_SUBJECT: process.env.VAPID_SUBJECT ?? "mailto:admin@example.com",
+  STREAM_BLOCK_MS: Number(process.env.STREAM_BLOCK_MS ?? 5000),
+  MAX_DELIVERIES: Number(process.env.MAX_DELIVERIES ?? 5),
+  RECLAIM_IDLE_MS: Number(process.env.RECLAIM_IDLE_MS ?? 30000),
 };
