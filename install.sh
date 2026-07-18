@@ -24,7 +24,7 @@ if [ ! -f .env ]; then
   echo "  JWT_SECRET, POSTGRES_PASSWORD, SEED_PASS generated. VAPID left empty (run 'make vapid' to enable web push)."
 else
   echo ".env already exists — leaving it untouched."
-  SEEDPW="$(grep -E '^SEED_PASS=' .env | cut -d= -f2-)"
+  SEEDPW="$(grep -E '^SEED_PASS=' .env | cut -d= -f2- || true)"
 fi
 
 echo "Building + starting the stack..."
