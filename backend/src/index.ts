@@ -1,12 +1,14 @@
 import { app, websocket } from "./app";
 import { env } from "./env";
 import { startIngest } from "./realtime/ingest";
+import { startStreamConsumer } from "./realtime/stream-consumer";
 import { startRetention } from "./realtime/retention";
 import { startNotifyRetry } from "./notify/retry";
 
 // Begin consuming worker events from Redis, then serve.
 //  That's why startIngest() (Redis subscribe) lives in index.ts, not app.ts — so importing the app for tests doesn't accidentally open Redis connections.
 startIngest();
+void startStreamConsumer();
 startRetention();
 startNotifyRetry();
 

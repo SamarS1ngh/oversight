@@ -5,6 +5,8 @@ import { redisStream } from "../src/realtime/redis";
 import { ensureGroups, consumeOnce, reclaimStale } from "../src/realtime/stream-consumer";
 import { alerts, cameras, users } from "../src/db/schema";
 import { eq } from "drizzle-orm";
+import { PUBSUB_CHANNELS } from "../src/realtime/ingest";
+import { CHANNELS } from "../src/realtime/channels";
 
 let up = false;
 beforeAll(async () => {
@@ -83,4 +85,12 @@ test("ensureGroups is idempotent", async () => {
   if (!up) return;
   await ensureGroups(); // second call, group already exists -> no throw
   expect(true).toBe(true);
+});
+
+test("pub/sub no longer carries detections/clips; keeps stats/webrtc/discovery", () => {
+  expect(PUBSUB_CHANNELS).not.toContain(CHANNELS.detections);
+  expect(PUBSUB_CHANNELS).not.toContain(CHANNELS.clips);
+  expect(PUBSUB_CHANNELS).toContain(CHANNELS.stats);
+  expect(PUBSUB_CHANNELS).toContain(CHANNELS.webrtcAnswers);
+  expect(PUBSUB_CHANNELS).toContain(CHANNELS.discoveryResults);
 });

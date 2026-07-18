@@ -8,20 +8,21 @@ import { handleAnswer } from "./signaling";
 import { dispatchNotifications, dispatchCameraEvent } from "../notify/dispatch";
 import { safeSnapshotPath } from "../notify/snapshot-url";
 
+// Channels still delivered over pub/sub. detections + clips moved to the
+// durable stream consumer (see stream-consumer.ts) and are intentionally absent.
+export const PUBSUB_CHANNELS = [
+  CHANNELS.stats,
+  CHANNELS.webrtcAnswers,
+  CHANNELS.discoveryResults,
+];
+
 // Subscribes to everything the worker emits and (a) persists alerts, (b) keeps
 // camera.status in sync, (c) fans events out to the owning user's WebSockets,
 // (d) routes WebRTC answers back to the signaling relay.
 export function startIngest() {
-  redisSub.subscribe(
-    CHANNELS.detections,
-    CHANNELS.stats,
-    CHANNELS.webrtcAnswers,
-    CHANNELS.clips,
-    CHANNELS.discoveryResults,
-    (err) => {
-      if (err) console.error("[ingest] subscribe failed:", err.message);
-    },
-  );
+  redisSub.subscribe(...PUBSUB_CHANNELS, (err) => {
+    if (err) console.error("[ingest] subscribe failed:", err.message);
+  });
 
   redisSub.on("message", (channel, raw) => {
     let msg: any;
@@ -30,14 +31,12 @@ export function startIngest() {
     } catch {
       return;
     }
-    if (channel === CHANNELS.detections) void onDetection(msg);
-    else if (channel === CHANNELS.stats) void onStats(msg);
+    if (channel === CHANNELS.stats) void onStats(msg);
     else if (channel === CHANNELS.webrtcAnswers) handleAnswer(msg);
-    else if (channel === CHANNELS.clips) void onClip(msg);
     else if (channel === CHANNELS.discoveryResults) onDiscoveryResults(msg);
   });
 
-  console.log("[ingest] subscribed to detections, stats, webrtc:answers, clips, discovery:results");
+  console.log("[ingest] subscribed to stats, webrtc:answers, discovery:results");
 }
 
 export async function onDetection(d: any) {
