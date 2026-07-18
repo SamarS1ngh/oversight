@@ -13,3 +13,7 @@ export const redisSub = new Redis(env.REDIS_URL, {
 
 redisPub.on("error", (e) => console.error("[redis:pub]", e.message));
 redisSub.on("error", (e) => console.error("[redis:sub]", e.message));
+
+// Dedicated connection for blocking XREADGROUP (can't share the subscribe-mode sub).
+export const redisStream = new Redis(env.REDIS_URL, { maxRetriesPerRequest: null });
+redisStream.on("error", (e) => console.error("[redis:stream]", e.message));

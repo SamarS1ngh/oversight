@@ -40,7 +40,7 @@ export function startIngest() {
   console.log("[ingest] subscribed to detections, stats, webrtc:answers, clips, discovery:results");
 }
 
-async function onDetection(d: any) {
+export async function onDetection(d: any) {
   if (!d?.id || !d?.camera_id) return;
   try {
     // id is the worker's UUID -> idempotent on redelivery
@@ -114,7 +114,7 @@ async function onStats(s: any) {
   }
 }
 
-async function onClip(k: any) {
+export async function onClip(k: any) {
   if (!k?.id || !k?.camera_id || !k?.path) return;
   const base = {
     id: k.id,
