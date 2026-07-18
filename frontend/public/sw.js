@@ -8,3 +8,5 @@ self.addEventListener("notificationclick", (e) => {
   e.notification.close();
   e.waitUntil(clients.openWindow(e.notification.data?.click || "/"));
 });
+// Pass-through fetch (no offline caching in v1) — required for PWA installability.
+self.addEventListener("fetch", () => {});

@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <!-- Full-bleed background so this also works as a maskable icon -->
+  <rect width="512" height="512" fill="#0d1117"/>
+  <!-- Camera-lens / eye glyph, kept within the ~80% maskable safe zone -->
+  <circle cx="256" cy="256" r="150" fill="none" stroke="#e6edf3" stroke-width="20"/>
+  <circle cx="256" cy="256" r="86" fill="#2f81f7"/>
+  <circle cx="256" cy="256" r="34" fill="#e6edf3"/>
+</svg>

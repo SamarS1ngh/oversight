@@ -149,6 +149,13 @@ input[type="checkbox"] {
   gap: 1rem;
 }
 
+@media (max-width: 560px) {
+  .grid { grid-template-columns: 1fr; }
+  .topbar { flex-wrap: wrap; gap: 8px; }
+  .top-actions { flex-wrap: wrap; }
+  .stats { flex-wrap: wrap; }
+}
+
 /* ---- tile ---- */
 .tile {
   padding: 0.9rem;
