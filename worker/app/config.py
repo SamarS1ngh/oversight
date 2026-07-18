@@ -49,3 +49,6 @@ RECONNECT_BACKOFF_MAX_S = float(os.environ.get("RECONNECT_BACKOFF_MAX_S", "30"))
 
 # ONVIF discovery (M4b)
 DISCOVERY_TIMEOUT_S = float(os.environ.get("DISCOVERY_TIMEOUT_S", "5"))
+
+# durable event pipeline (M4c)
+STREAM_MAXLEN = int(os.environ.get("STREAM_MAXLEN", "10000"))
