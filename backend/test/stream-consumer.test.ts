@@ -2,8 +2,8 @@ import { test, expect, beforeAll } from "bun:test";
 import { sql } from "drizzle-orm";
 import { db } from "../src/db";
 import { redisStream } from "../src/realtime/redis";
-import { ensureGroups, consumeOnce, reclaimStale } from "../src/realtime/stream-consumer";
-import { alerts, cameras, users } from "../src/db/schema";
+import { ensureGroups, consumeOnce, reclaimStale, STREAM_GROUP } from "../src/realtime/stream-consumer";
+import { alerts, cameras, users, notificationChannels } from "../src/db/schema";
 import { eq } from "drizzle-orm";
 import { PUBSUB_CHANNELS } from "../src/realtime/ingest";
 import { CHANNELS } from "../src/realtime/channels";
@@ -14,10 +14,10 @@ beforeAll(async () => {
   if (up) await ensureGroups();
 });
 
-async function seedCamera(): Promise<string> {
+async function seedCamera(): Promise<{ camId: string; ownerId: string }> {
   const [u] = await db.insert(users).values({ username: "s_" + Math.random().toString(36).slice(2), passwordHash: "x" }).returning();
   const [c] = await db.insert(cameras).values({ userId: u.id, name: "sc", rtspUrl: "rtsp://x" }).returning();
-  return c.id;
+  return { camId: c.id, ownerId: u.id };
 }
 const detEvent = (id: string, cameraId: string) => JSON.stringify({
   id, type: "detection", camera_id: cameraId, ts: new Date().toISOString(),
@@ -26,7 +26,7 @@ const detEvent = (id: string, cameraId: string) => JSON.stringify({
 
 test("a detection XADDed to the stream is persisted then XACKed", async () => {
   if (!up) return;
-  const camId = await seedCamera();
+  const { camId } = await seedCamera();
   const id = crypto.randomUUID();
   await redisStream.xadd("stream:detections", "*", "data", detEvent(id, camId));
   await consumeOnce(50);
@@ -38,7 +38,7 @@ test("a detection XADDed to the stream is persisted then XACKed", async () => {
 
 test("a duplicate detection id yields one alert row (idempotent)", async () => {
   if (!up) return;
-  const camId = await seedCamera();
+  const { camId } = await seedCamera();
   const id = crypto.randomUUID();
   await redisStream.xadd("stream:detections", "*", "data", detEvent(id, camId));
   await consumeOnce(50);
@@ -85,6 +85,44 @@ test("ensureGroups is idempotent", async () => {
   if (!up) return;
   await ensureGroups(); // second call, group already exists -> no throw
   expect(true).toBe(true);
+});
+
+test("a REDELIVERED detection does not re-fire notifications (dedup on insert)", async () => {
+  if (!up) return;
+  const { camId, ownerId } = await seedCamera();
+  let posts = 0;
+  const server = Bun.serve({ port: 0, fetch() { posts++; return new Response("ok"); } });
+  await db.insert(notificationChannels).values({
+    userId: ownerId,
+    type: "webhook",
+    name: "dedup-hook",
+    config: { url: `http://127.0.0.1:${server.port}/h` },
+    minSeverity: "low",
+    cooldownSecs: 0,
+  });
+  const id = crypto.randomUUID();
+  await redisStream.xadd("stream:detections", "*", "data", detEvent(id, camId));
+  await consumeOnce(50);
+  // Redelivery of the SAME detection id: insert no-ops (onConflictDoNothing),
+  // and onDetection must skip the fanout on that no-op — otherwise this fires
+  // a second webhook POST for an event already notified once.
+  await redisStream.xadd("stream:detections", "*", "data", detEvent(id, camId));
+  await consumeOnce(50);
+  await new Promise((r) => setTimeout(r, 80)); // dispatchNotifications is fire-and-forget
+  expect(posts).toBe(1);
+  server.stop();
+});
+
+test("stream-consumer loop recovers from a lost consumer group (NOGROUP)", async () => {
+  if (!up) return;
+  await redisStream.xgroup("DESTROY", "stream:detections", STREAM_GROUP).catch(() => {});
+  await ensureGroups();
+  const groups = (await redisStream.xinfo("GROUPS", "stream:detections")) as any[];
+  const names = groups.map((g: any) => {
+    const i = g.indexOf("name");
+    return i >= 0 ? g[i + 1] : null;
+  });
+  expect(names).toContain(STREAM_GROUP);
 });
 
 test("pub/sub no longer carries detections/clips; keeps stats/webrtc/discovery", () => {

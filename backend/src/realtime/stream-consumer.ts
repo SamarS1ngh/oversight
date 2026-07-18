@@ -91,7 +91,9 @@ export async function startStreamConsumer(): Promise<void> {
       await reclaimStale();
       await consumeOnce();
     } catch (e) {
-      console.error("[stream] loop error:", (e as Error).message);
+      const msg = (e as Error).message;
+      console.error("[stream] loop error:", msg);
+      if (msg.includes("NOGROUP")) await ensureGroups().catch(() => {});
       await new Promise((r) => setTimeout(r, 1000));
     }
   }

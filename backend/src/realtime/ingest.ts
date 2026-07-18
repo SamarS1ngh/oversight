@@ -41,9 +41,10 @@ export function startIngest() {
 
 export async function onDetection(d: any) {
   if (!d?.id || !d?.camera_id) return;
+  let inserted;
   try {
     // id is the worker's UUID -> idempotent on redelivery
-    await db
+    inserted = await db
       .insert(alerts)
       .values({
         id: d.id,
@@ -61,7 +62,8 @@ export async function onDetection(d: any) {
         severity: d.severity ?? "low",
         snapshotPath: safeSnapshotPath(d.snapshot_path),
       })
-      .onConflictDoNothing();
+      .onConflictDoNothing()
+      .returning({ id: alerts.id });
   } catch (e) {
     // Rethrow so the durable stream consumer leaves the entry PENDING and
     // retries it — a transient DB failure must not silently drop a detection
@@ -70,6 +72,7 @@ export async function onDetection(d: any) {
     console.error("[ingest] alert insert failed:", (e as Error).message);
     throw e;
   }
+  if (inserted.length === 0) return; // duplicate redelivery — already persisted + notified
   const owner = await ownerOf(d.camera_id);
   if (owner) sendToUser(owner, { channel: "alert", data: d });
   if (owner) void dispatchNotifications(d, owner);
@@ -130,13 +133,14 @@ export async function onClip(k: any) {
     durationMs: k.duration_ms ?? 0,
     sizeBytes: k.size_bytes ?? 0,
   };
+  let inserted;
   try {
-    await db.insert(clips).values({ ...base, alertId: k.alert_id ?? null }).onConflictDoNothing();
+    inserted = await db.insert(clips).values({ ...base, alertId: k.alert_id ?? null }).onConflictDoNothing().returning({ id: clips.id });
   } catch {
     // The alert row may not have landed yet (FK). Store the clip unlinked
     // rather than lose it.
     try {
-      await db.insert(clips).values({ ...base, alertId: null }).onConflictDoNothing();
+      inserted = await db.insert(clips).values({ ...base, alertId: null }).onConflictDoNothing().returning({ id: clips.id });
     } catch (e) {
       // Both inserts failed for a non-FK reason (a genuine DB error) — rethrow
       // so the stream consumer retries rather than dropping the clip row.
@@ -144,6 +148,7 @@ export async function onClip(k: any) {
       throw e;
     }
   }
+  if (!inserted || inserted.length === 0) return; // duplicate — skip fanout
   const owner = await ownerOf(k.camera_id);
   if (owner) sendToUser(owner, { channel: "clip", data: k });
 }
