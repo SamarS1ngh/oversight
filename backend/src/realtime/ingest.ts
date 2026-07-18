@@ -64,8 +64,12 @@ export async function onDetection(d: any) {
       })
       .onConflictDoNothing();
   } catch (e) {
+    // Rethrow so the durable stream consumer leaves the entry PENDING and
+    // retries it — a transient DB failure must not silently drop a detection
+    // (onConflictDoNothing means a duplicate id does NOT reach here, so this is
+    // a genuine write failure, not a redelivery).
     console.error("[ingest] alert insert failed:", (e as Error).message);
-    return;
+    throw e;
   }
   const owner = await ownerOf(d.camera_id);
   if (owner) sendToUser(owner, { channel: "alert", data: d });
@@ -135,8 +139,10 @@ export async function onClip(k: any) {
     try {
       await db.insert(clips).values({ ...base, alertId: null }).onConflictDoNothing();
     } catch (e) {
+      // Both inserts failed for a non-FK reason (a genuine DB error) — rethrow
+      // so the stream consumer retries rather than dropping the clip row.
       console.error("[ingest] clip insert failed:", (e as Error).message);
-      return;
+      throw e;
     }
   }
   const owner = await ownerOf(k.camera_id);

@@ -58,6 +58,27 @@ test("a malformed entry does not crash the loop and is poison-dropped", async ()
   expect(Number(pend?.[0] ?? 0)).toBeGreaterThanOrEqual(0);
 });
 
+test("a detection whose DB write fails stays PENDING (not acked+lost)", async () => {
+  if (!up) return;
+  // A non-existent camera_id → alerts.cameraId FK violation → onDetection's
+  // insert throws → the consumer must NOT XACK, so the entry stays pending and
+  // is retried. This is the whole durability point: a transient write failure
+  // must never silently drop a detection.
+  const id = crypto.randomUUID();
+  const entryId = await redisStream.xadd(
+    "stream:detections", "*", "data",
+    detEvent(id, "00000000-0000-0000-0000-000000000000"),
+  );
+  await consumeOnce(50);
+  const [row] = await db.select().from(alerts).where(eq(alerts.id, id));
+  expect(row).toBeUndefined(); // not persisted
+  const pend = (await redisStream.xpending(
+    "stream:detections", "vms-backend", "IDLE", 0, entryId, entryId, 1,
+  )) as any[];
+  expect(pend.length).toBe(1); // still pending -> will be retried, not lost
+  await reclaimStale(0, 1); // cleanup: poison-drop this permanently-bad entry
+});
+
 test("ensureGroups is idempotent", async () => {
   if (!up) return;
   await ensureGroups(); // second call, group already exists -> no throw
